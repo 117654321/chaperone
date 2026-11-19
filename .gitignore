@@ -93,3 +93,9 @@ dist/
 
 # Local GPU example runs, downloaded model assets, and runtime environments.
 /validation/example-gpu/
+
+# Host-backed compiler caches (see foundry container _foundry_cache_dir)
+.chaperone-cache/
+
+# Local ad-hoc debugging scripts and their run directories
+examples/self_test/
