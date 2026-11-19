@@ -1,0 +1,74 @@
+# @package _global_
+#
+# Beam search with an AF3 interface reward, for the PD-L1 binder example.
+#
+# Unlike plain `rfd4-generate`, this evaluates candidates *during* generation at
+# several integration steps, keeps the best branches, and continues only from
+# those. The reward here is the interface quality of an AF3 refold
+# (`oracle_ppi.min_ipae_coi`, where lower is better), so the sampler is steered
+# toward poses that actually dock rather than merely fold.
+#
+# This is upstream's reward-guided search (`rfproteina/search/beam_search.py`),
+# not a chaperone extension. It costs one AF3 refold per branch per checkpoint --
+# with 4 checkpoints and n_branch=2 that is 8-16 oracle calls per design, each
+# spawning the OF3 apptainer. Budget accordingly.
+#
+# Usage (from the RFD4-Proteina checkout):
+#   rfd4-generate inference_experiment=<this file> \
+#       inputs=<path to conditioned CIF> out_dir=<dir>
+
+defaults:
+  - inference_on_user_inputs
+  - _self_
+
+inputs: ???                     # set on the command line to the conditioned CIF
+num_replicates: 4
+batch_size: 1
+global_prefix: pdl1_beam
+out_dir: outputs/pdl1_beam
+run_name_: pdl1_beam
+
+# Outer epoch-end metrics. ppi_refolding reuses the oracle results cached during
+# beam scoring, so it is cheap and fills per_example_metrics.csv.
+# `interchain_interactions` must be listed too: the checkpoint-20 reward reads it,
+# and a metric only registers when its tag is present here.
+metrics_tags: [design, interchain_interactions, ppi_refolding]
+
+search:
+  n_branch: 2
+  beam_width: 2
+  save_rollouts: false
+  checkpoints:
+    # Early: cheap geometric reward, no oracle. Docks the binder roughly before
+    # spending AF3 calls.
+    "20":
+      metrics: [interchain_interactions]
+      use_clean_prediction: true
+      rewards:
+        interchain_interactions.hbond_atom_pair_count_coi: {weight: 1.0}
+        interchain_interactions.hydrophobic_atom_pair_count_coi: {weight: 0.5}
+
+    # Late: AF3 interface confidence decides who survives.
+    "40":
+      metrics: [oracle_ppi]
+      rewards:
+        # Negative weight minimises interface PAE: lower is a more confident dock.
+        oracle_ppi.min_ipae_coi: {weight: -1.0}
+      continuation_criteria:
+        # Keep only branches whose interface PAE is under 5 A. `max` is
+        # inclusive, so this is the largest float below 5.0.
+        oracle_ppi.min_ipae_coi: {max: 4.999999999999999}
+
+    "60":
+      metrics: [oracle_ppi]
+      rewards:
+        oracle_ppi.min_ipae_coi: {weight: -1.0}
+        oracle_ppi.ptm_coi: {weight: 0.5}
+      # No continuation_criteria here: this checkpoint is the schedule end, and
+      # beam search rejects criteria on the last step ("continuation_criteria
+      # must target checkpoints before the schedule end"). Selection still
+      # happens; there is simply nothing left to continue into.
+
+generation:
+  args:
+    nsteps: 60

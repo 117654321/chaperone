@@ -1,0 +1,10 @@
+# PD-L1 binder -- upstream's recipe from docs/how-to/binder-in-10-lines.md,
+# with the target renumbered onto chain B and shifted by -16
+# (the shipped crop starts at PDB residue 17).
+pdl1_binder:
+  input: pdl1_target.cif
+  contig: "50-120, /0, B1-115"
+  conditions:
+    C_CRDGRP: {1: [{select: "sel('B/*/*/[N,CA,C,O]')"}]}
+    C_SEQ: {true: [{select: "sel('B')"}]}
+    C_HOT: {true: [{select: "sel('B/*/40/[CG,OH]')"}, {select: "sel('B/*/99/[CG,SD]')"}, {select: "sel('B/*/107/[CD2,OH]')"}]}
