@@ -121,8 +121,16 @@ def test_example_smoke_configuration_and_exports(tmp_path, example, test_mode):
     # production inputs. Resolve actual blocks and stage inputs, without GPU models.
     # A private copy also catches paths accidentally anchored outside --rundir.
     source = ROOT / "examples" / example
-    copied = tmp_path / "example"
-    shutil.copytree(source.parent, copied, ignore=shutil.ignore_patterns("rundir*", "runs", "__pycache__"))
+    # Copy the whole examples tree: some entrypoints read assets from a sibling
+    # example (multi-mpnn pulls cortisol.smi from cortisol-binder/files), so a
+    # lone example directory would break paths that work in a real checkout.
+    tree = tmp_path / "examples"
+    shutil.copytree(
+        ROOT / "examples",
+        tree,
+        ignore=shutil.ignore_patterns("rundir*", "runs", "__pycache__"),
+    )
+    copied = tree / example
     input_files = {
         path.relative_to(copied): path.read_bytes()
         for path in (copied / "files").rglob("*") if path.is_file()
@@ -180,9 +188,13 @@ def run(self, blocks, data=None, **kwargs):
 chaperone.ExecutionEngine.run = run
 script, output, mode = sys.argv[1:]
 sys.argv = [script, *(["--test"] if mode == "smoke" else []), "--rundir=" + str(Path(output).parent / "custom-run")]
+# `python script.py` puts the script's own directory on sys.path, so a pipeline
+# may import modules beside it (cortisol-binder imports `score`). run_path does
+# not, so mirror the interpreter here.
+sys.path.insert(0, str(Path(script).parent))
 runpy.run_path(script, run_name="__main__")
 Path(output).write_text(json.dumps({"blocks": seen, "exports": exports}, default=str))
-''', tmp_path, copied / source.name, result, "smoke" if test_mode else "production")
+''', tmp_path, tree / source.relative_to(ROOT / "examples"), result, "smoke" if test_mode else "production")
     assert {
         path.relative_to(copied): path.read_bytes()
         for path in (copied / "files").rglob("*") if path.is_file()

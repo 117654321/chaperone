@@ -232,9 +232,15 @@ def test_rfd2_portable_bakes_a_hash_checked_checkpoint():
 
 
 def test_default_block_images_never_require_site_files(monkeypatch):
-    """Discovery must produce buildable public images even on a site host."""
+    """Discovery must produce buildable public images even on a site host.
+
+    RFD4 is exempt: NVIDIA publishes its runtime as a prebuilt SIF, so the image
+    is intentionally ``from_existing`` and the download is public.
+    """
     from blocks import Blocks
     from chaperone.containers import Image
+
+    PREBUILT_BY_DESIGN = {"rfd4"}
 
     def reject_existing_image(*args, **kwargs):
         pytest.fail("Default block selected a host-only prebuilt image")
@@ -244,6 +250,8 @@ def test_default_block_images_never_require_site_files(monkeypatch):
         block = Blocks[name]
         image = block._get_image() if hasattr(block, "_get_image") else getattr(block, "_image", None)
         if image is not None:
+            if name in PREBUILT_BY_DESIGN:
+                continue
             assert not image.is_existing, name
             assert image._base_image, name
             config = image._command_config or {}

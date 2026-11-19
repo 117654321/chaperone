@@ -57,6 +57,64 @@ def _checkpoint_binds() -> list[tuple[str, str]]:
     return [(str(p), str(p)) for p in dict.fromkeys(paths) if p.is_dir()]
 
 
+def _foundry_cache_dir(subdir: str) -> str:
+    """Host-backed compiler cache location.
+
+    Apptainer runs with --no-mount home and --writable-tmpfs, so anything written
+    under the container's HOME lands in a small memory-backed layer. torch's
+    inductor and AOT autograd caches are multi-GB, and filling that layer aborts
+    inference with "OSError: [Errno 28] No space left on device". Prefer the run
+    directory, and fall back to the work folder; the engine binds both from the
+    host. Never fall back to HOME, which is the layer that overflows.
+
+    Cloud execution has no host to bind from, so it keeps the paths inside the
+    image. ``/tmp`` is writable there and the cache only has to survive one
+    remote job, which is exactly the lifetime cloud runs have.
+    """
+    if _running_in_cloud():
+        return f"/tmp/chaperone-foundry/{subdir}"
+    for setting in ("RUNDIR", "CHAPERONE_CONTAINER_WORKSPACE"):
+        base = get_setting_field(setting, "") or ""
+        if base:
+            path = Path(base).expanduser() / ".cache" / "foundry" / subdir
+            path.mkdir(parents=True, exist_ok=True)
+            return str(path)
+    # Last resort: the working directory, which the engine binds into every tool
+    # container. /tmp is not usable because runs mount --no-mount tmp.
+    path = Path.cwd() / ".chaperone-cache" / "foundry" / subdir
+    path.mkdir(parents=True, exist_ok=True)
+    return str(path)
+
+
+def _running_in_cloud() -> bool:
+    """True when commands are being built for remote execution.
+
+    Either a cloud backend (Modal) is assembling the command, or the site is
+    configured to run there. Local and Slurm runs never take this path.
+    """
+    try:
+        from chaperone.orchestration.modal_backend import current_command_context
+
+        if current_command_context() is not None:
+            return True
+    except Exception:
+        pass
+    try:
+        return get_setting_field("CHAPERONE_COMPUTE_BACKEND", "auto") in (
+            "modal",
+            "cloud",
+        )
+    except Exception:
+        return False
+
+
+def _bindable(binds) -> list[tuple[str, str]]:
+    """Drop host binds that cannot exist on a cloud worker."""
+    if not _running_in_cloud():
+        return binds
+    return []
+
+
 def _foundry_binds() -> list[tuple[str, str]]:
     """Mount configured checkpoints; the engine supplies workspace/run mounts."""
     return _checkpoint_binds()
@@ -135,7 +193,18 @@ _FOUNDRY_CUDA_CONTAINER = (
         env={
             "FOUNDRY_CHECKPOINT_DIRS": lambda: get_setting_field(
                 "FOUNDRY_CHECKPOINT_DIRS", ""
-            )
+            ),
+            # --containall --no-mount home leaves the container with a HOME that
+            # does not exist on disk, and --writable-tmpfs provides only a small
+            # overlay. torch's inductor/AOT caches are multi-GB, so they overflow
+            # it and inference dies with "OSError: [Errno 28] No space left on
+            # device". Point HOME and every cache at the work folder, which the
+            # engine binds from the host.
+            "HOME": lambda: _foundry_cache_dir("home"),
+            "TORCHINDUCTOR_CACHE_DIR": lambda: _foundry_cache_dir("inductor"),
+            "TRITON_CACHE_DIR": lambda: _foundry_cache_dir("triton"),
+            "TORCH_HOME": lambda: _foundry_cache_dir("torch"),
+            "XDG_CACHE_HOME": lambda: _foundry_cache_dir("xdg"),
         },
     )
 )
@@ -197,7 +266,15 @@ _FOUNDRY_PUBLIC_CONTAINER = (
         env={
             "FOUNDRY_CHECKPOINT_DIRS": lambda: get_setting_field(
                 "FOUNDRY_CHECKPOINT_DIRS", ""
-            )
+            ),
+            # Apptainer runs with --no-mount home, so HOME falls back to the
+            # container's writable tmpfs layer. torch's inductor/AOT caches are
+            # several GB of compiler artifacts and fill that layer, aborting the
+            # run with "OSError: [Errno 28] No space left on device". Point every
+            # cache at the run directory, which the engine binds from the host.
+            "TORCHINDUCTOR_CACHE_DIR": lambda: _foundry_cache_dir("inductor"),
+            "TRITON_CACHE_DIR": lambda: _foundry_cache_dir("triton"),
+            "TORCH_HOME": lambda: _foundry_cache_dir("torch"),
         },
     )
 )

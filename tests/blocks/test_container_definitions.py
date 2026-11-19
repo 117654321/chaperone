@@ -19,7 +19,11 @@ from chaperone.containers import Image
 BLOCKS_DIR = Path(blocks.__file__).parent
 
 # All shipped block images must be buildable without private site images.
-EXISTING_ALLOWLIST = {}
+# RFD4 is the one exception: NVIDIA publishes a prebuilt runtime SIF, so there is
+# no recipe to build and nothing a site would have to supply.
+EXISTING_ALLOWLIST = {
+    "rfd4": "prebuilt runtime SIF from NVIDIA/RFD4-Proteina; no recipe by design",
+}
 PORTABLE_COUNTERPARTS = {}
 
 # Images the audit asked to be covered explicitly, plus the buildable variants.

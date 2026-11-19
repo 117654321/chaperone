@@ -216,15 +216,33 @@ def test_compile_rejects_empty_run(tmp_path: Path) -> None:
 
 
 def test_boltzgen_uses_stable_container_tmpdir(tmp_path: Path, monkeypatch) -> None:
+    """TMPDIR must be a short container path, not the (possibly deep) host cache.
+
+    Multiprocessing creates AF_UNIX sockets under TMPDIR and Linux caps the path
+    at 108 bytes, so BoltzGen redirects it to a fixed short alias whenever it has
+    a host cache to bind. Without a cache it leaves TMPDIR alone.
+    """
     from chaperone import get_settings
-    monkeypatch.setattr(get_settings(), "CHAPERONE_CONTAINER_BACKEND", "apptainer")
+
+    settings = get_settings()
+    monkeypatch.setattr(settings, "CHAPERONE_CONTAINER_BACKEND", "apptainer")
     config = tmp_path / "design.yaml"
     config.write_text("entities: []\n")
 
+    cache = tmp_path / "hf-cache"
+    cache.mkdir()
+    monkeypatch.setattr(settings, "HF_HUB_CACHE", str(cache))
     block = BoltzGenBlock(config=str(config), num_designs=1, budget=1)
 
-    assert "--env" in block.command_template
-    assert "TMPDIR=/tmp" in block.command_template
+    template = block.command_template
+    tmpdir_entries = [item for item in template if "TMPDIR=" in str(item)]
+    assert tmpdir_entries, template
+    for entry in tmpdir_entries:
+        value = str(entry).split("TMPDIR=", 1)[1]
+        # Short (socket path budget) and inside the container, never the host cache.
+        assert len(value) < 64, value
+        assert value.startswith("/tmp/"), value
+        assert str(cache) not in value, value
 
 
 # test_mpnn_container.py

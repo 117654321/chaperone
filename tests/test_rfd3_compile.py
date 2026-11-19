@@ -1,7 +1,9 @@
 import pytest
 from chaperone import get_settings
+from blocks.networks.foundry.mpnn import FoundryMPNNBlock
 from blocks.networks.foundry.rfdiffusion3 import RFD3Block, RFD3PartialBlock
 from blocks.networks.foundry.rfd3na import RFD3NABlock
+from blocks.networks.prediction.rosettafold3 import RosettaFold3Block
 from chaperone_cli.warmup import main
 
 
@@ -19,6 +21,14 @@ def test_compile_and_seed_zero_reach_runtime(cls, tmp_path):
 
 
 def test_compile_cache_bound_for_rfd3_only(monkeypatch, tmp_path):
+    """RFD3 honours RFD3_COMPILE_CACHE_DIR, and its siblings get a host cache too.
+
+    Every Foundry block compiles torch code, so every one of them needs a cache
+    outside the container's 64 MB writable tmpfs -- a cache only on RFD3 would
+    still let rfd3na / rf3 / foundry_mpnn die with "OSError: No space left on
+    device". RFD3 is the only one that reads the explicit
+    RFD3_COMPILE_CACHE_DIR setting; the others fall back to the workspace.
+    """
     settings = get_settings()
     monkeypatch.setattr(settings, "CHAPERONE_CONTAINER_BACKEND", "apptainer")
     monkeypatch.setattr(settings, "RFD3_COMPILE_CACHE_DIR", str(tmp_path))
@@ -27,9 +37,14 @@ def test_compile_cache_bound_for_rfd3_only(monkeypatch, tmp_path):
     assert "TORCHINDUCTOR_CACHE_DIR=/tmp/chaperone-rfd3/inductor" in command
     assert "TRITON_CACHE_DIR=/tmp/chaperone-rfd3/triton" in command
     assert "TMPDIR=/tmp/chaperone-rfd3" in command
-    assert not any(
-        "TORCHINDUCTOR" in x for x in RFD3NABlock(cloud=False).command_template
-    )
+
+    # Siblings must still redirect their compiler caches off the tmpfs, even
+    # though they do not read RFD3_COMPILE_CACHE_DIR. RFD3PartialBlock subclasses
+    # RFD3Block, so it inherits the explicit setting and is checked separately.
+    for cls in (RFD3NABlock, RosettaFold3Block, FoundryMPNNBlock):
+        sibling = cls(cloud=False).command_template
+        assert any("TORCHINDUCTOR" in x for x in sibling), cls.__name__
+
     assert RFD3Block(command_template=["custom"]).command_template == ["custom"]
     monkeypatch.setattr(settings, "RFD3_COMPILE_CACHE_DIR", str(tmp_path / "missing"))
     with pytest.raises(ValueError, match="Create RFD3_COMPILE_CACHE_DIR"):
@@ -93,13 +108,37 @@ def test_warmup_uses_engine_with_compile_and_bounded_gpu_request(monkeypatch, tm
     assert runtime.job_args.mem_gb == 32
 
 
-@pytest.mark.parametrize("mode", ["modal", "explicit_cloud"])
+@pytest.mark.parametrize("mode", ["backend", "modal_context"])
 def test_cloud_does_not_mount_host_compile_cache(monkeypatch, tmp_path, mode):
+    """Remote runs must not bind a host path that will not exist on the worker.
+
+    The Foundry cache env is emitted for every run (each block compiles torch
+    code), but under cloud execution it must point inside the image. Two things
+    put a run in that mode: the site backend setting, and an active Modal command
+    context. The ``cloud=True`` block flag alone does not -- it only affects
+    cmdline arguments such as RFD3's own compile-model switch.
+    """
     settings = get_settings()
     monkeypatch.setattr(
         settings, "RFD3_COMPILE_CACHE_DIR", str(tmp_path / "not-created")
     )
-    if mode == "modal":
+
+    if mode == "backend":
         monkeypatch.setattr(settings, "CHAPERONE_COMPUTE_BACKEND", "modal")
-    command = RFD3Block(cloud=mode == "explicit_cloud").command_template
-    assert not any("TORCHINDUCTOR" in item for item in command)
+        command = RFD3Block(cloud=False).command_template
+    else:
+        from chaperone.orchestration import modal_backend
+
+        monkeypatch.setattr(settings, "CHAPERONE_COMPUTE_BACKEND", "local")
+        token = modal_backend._COMMAND_CONTEXT.set(modal_backend.CommandContext())
+        try:
+            command = RFD3Block(cloud=False).command_template
+        finally:
+            modal_backend._COMMAND_CONTEXT.reset(token)
+
+    # RFD3_COMPILE_CACHE_DIR must never be bound: it is the host-only path.
+    assert not any(str(tmp_path / "not-created") in item for item in command)
+    # Any cache env that survives must be a container path.
+    for item in command:
+        if "TORCHINDUCTOR" in item or "TRITON_CACHE_DIR" in item:
+            assert "/tmp/" in str(item), item
