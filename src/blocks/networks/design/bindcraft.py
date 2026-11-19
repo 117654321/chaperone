@@ -27,7 +27,12 @@ from typing import Any
 
 from pydantic import Field, field_validator
 
-from chaperone import CompiledBlockFunction, JobArgs, PipelineDataHandler
+from chaperone import (
+    CompiledBlockFunction,
+    JobArgs,
+    PipelineDataHandler,
+    get_setting_field,
+)
 from chaperone.block_config import TIER_PRIMARY, ScriptSpec
 from chaperone.common import tail_block_log, try_float
 from chaperone.containers import Image
@@ -203,11 +208,24 @@ class BindCraftBlock(CompiledBlockFunction):
         100,
         ge=1,
         description=(
-            "Maximum hallucination trajectories per target. None honors the advanced "
-            "preset and may run until the accepted-design target is reached."
+            "Maximum *successful* hallucination trajectories per target. BindCraft "
+            "counts only trajectories that reach the relax step (Trajectory/Relaxed/), "
+            "so a run whose early trajectories all fail the pLDDT>=0.7 gate keeps "
+            "generating new ones. None honors the advanced preset."
         ),
     )
     binder_name: str = Field("binder", description="Prefix for generated designs.")
+    trajectory_budget_hours: float | None = Field(
+        12.0,
+        gt=0,
+        description=(
+            "Wall-clock budget for the design loop. BindCraft's max_trajectories "
+            "counts only successful trajectories, so a target whose early attempts "
+            "fail the pLDDT>=0.7 gate loops indefinitely; at the budget the run is "
+            "stopped and anything already in Accepted/ is kept. Keep it below the "
+            "Slurm time_limit."
+        ),
+    )
 
     filter_preset: str = Field(
         "default_filters",
@@ -230,6 +248,14 @@ class BindCraftBlock(CompiledBlockFunction):
     advanced_overrides: dict[str, Any] = Field(
         default_factory=dict,
         description="Shallow overrides applied to the selected advanced JSON.",
+    )
+    af_params_dir: str | None = Field(
+        default_factory=lambda: get_setting_field("BINDCRAFT_AF2_PARAMS", None),
+        description=(
+            "Directory holding the AlphaFold2 parameter .npz files, bind-mounted "
+            "to /opt/BindCraft/params. The image ships the directory empty. "
+            "Defaults to BINDCRAFT_AF2_PARAMS, shared with bindcraft2."
+        ),
     )
 
     @field_validator("lengths")
@@ -337,9 +363,19 @@ class BindCraftBlock(CompiledBlockFunction):
             json.dumps(manifest, indent=2, sort_keys=True) + "\n"
         )
 
+        binds = [(str(sandbox), str(sandbox))]
+        if self.af_params_dir:
+            params_dir = Path(self.af_params_dir).expanduser().resolve()
+            if not (params_dir / "params_model_5_ptm.npz").is_file():
+                raise ValueError(
+                    f"AlphaFold2 parameters not found under {params_dir}; set "
+                    "BINDCRAFT_AF2_PARAMS or af_params_dir"
+                )
+            binds.append((str(params_dir), "/opt/BindCraft/params"))
+
         cmd = self._script_spec.image.build_command(
             *self._script_spec.command,
-            binds=[(str(sandbox), str(sandbox))],
+            binds=binds,
         )
         return cmd + [
             "--settings",
@@ -354,7 +390,11 @@ class BindCraftBlock(CompiledBlockFunction):
             str(advanced_overrides_path),
             "--config-dir",
             str(config_dir / "resolved"),
-        ]
+        ] + (
+            ["--trajectory-budget-hours", str(self.trajectory_budget_hours)]
+            if self.trajectory_budget_hours is not None
+            else []
+        )
 
     @staticmethod
     def _design_key(path: Path) -> tuple[str, int | None]:

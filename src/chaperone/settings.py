@@ -315,6 +315,15 @@ class ChaperoneSettings(BaseSettings):
         description="Writable directory for ColabFold/AlphaFold2 params (--data). "
         "~3-4GB downloaded on first run.",
     )
+    BINDCRAFT_AF2_PARAMS: Optional[str] = Field(
+        default=None,
+        description=(
+            "Directory holding the AlphaFold2 .npz parameter bundle shared by "
+            "bindcraft and bindcraft2. Bindcraft mounts it at /opt/BindCraft/params; "
+            "the image ships that directory empty so a host copy (e.g. the "
+            "alphafold2_databases bundle) is reused instead of downloading 5.6GB."
+        ),
+    )
     PROTEIN_MSA_DIRS: Optional[list[dict]] = Field(
         default=None,
         description=(

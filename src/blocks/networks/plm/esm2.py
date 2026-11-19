@@ -91,9 +91,26 @@ class ESM2Block(CompiledBlockFunction):
         cache = get_setting_field("HF_HUB_CACHE", None)
         cache = str(Path(cache).expanduser().resolve()) if cache else None
         binds = [(cache, cache)] if cache else []
+        env = {"HF_HUB_CACHE": cache} if cache else {}
+        # Apptainer inherits the caller's environment, so a site-wide SOCKS
+        # proxy (all_proxy=socks5://...) reaches the container. huggingface_hub
+        # builds an httpx client from those vars and refuses to start when
+        # socksio is absent. The weights are cached on the host, so browsing is
+        # never needed here: blank the proxy vars and pin the library to the
+        # local cache.
+        env.update(
+            HTTP_PROXY="",
+            HTTPS_PROXY="",
+            ALL_PROXY="",
+            http_proxy="",
+            https_proxy="",
+            all_proxy="",
+            no_proxy="*",
+            NO_PROXY="*",
+            HF_HUB_OFFLINE="1",
+        )
         return self._script_spec.image.build_command(
-            *self._script_spec.command, binds=binds,
-            env={"HF_HUB_CACHE": cache} if cache else {},
+            *self._script_spec.command, binds=binds, env=env,
         )
 
     def _resolve_model_name(self) -> str:
