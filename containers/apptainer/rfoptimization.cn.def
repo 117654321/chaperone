@@ -1,0 +1,127 @@
+BootStrap: localimage
+From: /home/user/data/apptainer/ubuntu2404.sif
+
+%files
+    /home/user/data/apptainer/sources/rfoptimization/repos/0/foundry /opt/foundry
+    /home/user/data/apptainer/sources/rfoptimization/repos/0/LigandMPNN /opt/ligandmpnn
+
+%files
+    /home/user/data/apptainer/sources/rfoptimization/files/0/cuda-repo /opt/cuda-repo
+    /home/user/data/apptainer/sources/rfoptimization/files/0/wheels /opt/wheels
+    /home/user/data/apptainer/sources/rfoptimization/files/0/model_params /opt/mpnn-weights
+
+%post
+    . /.singularity.d/env/10-docker*.sh
+
+    # China mirrors. Plain HTTP: the base image has no ca-certificates yet.
+    sed -i 's|http://archive.ubuntu.com/ubuntu|http://mirrors.tuna.tsinghua.edu.cn/ubuntu|g; s|http://security.ubuntu.com/ubuntu|http://mirrors.tuna.tsinghua.edu.cn/ubuntu|g' /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null || true
+    sed -i 's|http://archive.ubuntu.com/ubuntu|http://mirrors.tuna.tsinghua.edu.cn/ubuntu|g; s|http://security.ubuntu.com/ubuntu|http://mirrors.tuna.tsinghua.edu.cn/ubuntu|g' /etc/apt/sources.list 2>/dev/null || true
+    apt-get update -y
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        build-essential \
+        ca-certificates \
+        git \
+        python3.12 \
+        python3.12-dev \
+        python3.12-venv \
+        wget
+    rm -rf /var/lib/apt/lists/*
+
+%post
+    cd /
+    unset http_proxy https_proxy all_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY
+    export no_proxy='*' NO_PROXY='*'
+    # The NVIDIA CDN truncates Packages.gz at exactly 1 MiB on this network, so apt
+    # cannot read the remote index. The dependency closure was fetched on the host
+    # into a flat local repository instead.
+    echo "deb [trusted=yes] file:///opt/cuda-repo ./" > /etc/apt/sources.list.d/cuda-local.list
+    mkdir -p /etc/apt/apt.conf.d
+    printf 'Acquire::Retries "5";\nAcquire::Check-Valid-Until "false";\n' > /etc/apt/apt.conf.d/99chaperone-retries
+    apt-get update
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends cuda-toolkit-12-8
+    rm -rf /var/lib/apt/lists/*
+
+%post
+    cd /
+    unset http_proxy https_proxy all_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY
+    export no_proxy='*' NO_PROXY='*'
+    export PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+    export PIP_EXTRA_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+    git config --global --add safe.directory /opt/foundry
+    git config --global --add safe.directory /opt/ligandmpnn
+    # torch cu128 is staged on the host: the Aliyun mirror throttles this 820 MB
+    # wheel inside the build sandbox even though the host fetches it at ~11 MB/s.
+    TORCH_WHEEL=/opt/wheels/torch-2.11.0+cu128-cp312-cp312-manylinux_2_28_x86_64.whl
+
+    # ── RFO / RF3 environment ───────────────────────────────────────────
+    python3.12 -m venv /opt/rfo-env
+    /opt/rfo-env/bin/pip install --upgrade pip setuptools wheel
+    /opt/rfo-env/bin/pip install "$TORCH_WHEEL"
+    /opt/rfo-env/bin/pip install -e '/opt/foundry[rf3,rfo]' 'atomworks[ml]==3.0.1' biotite==1.6.0 numpy==2.4.3 lightning==2.6.1
+
+    # ── Boltz environment ───────────────────────────────────────────────
+    python3.12 -m venv /opt/boltz-env
+    /opt/boltz-env/bin/pip install --upgrade pip setuptools wheel
+    /opt/boltz-env/bin/pip install "$TORCH_WHEEL"
+    /opt/boltz-env/bin/pip install 'boltz[cuda]==2.2.1' numpy==1.26.4
+
+    # ── MPNN environment ────────────────────────────────────────────────
+    python3.12 -m venv /opt/mpnn-env
+    /opt/mpnn-env/bin/pip install --upgrade pip setuptools wheel
+    /opt/mpnn-env/bin/pip install "$TORCH_WHEEL"
+    /opt/mpnn-env/bin/pip install numpy==1.26.4 prody==2.6.1 scipy biopython ml-collections dm-tree
+
+%post
+    cd /
+    unset http_proxy https_proxy all_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY
+    export no_proxy='*' NO_PROXY='*'
+    # LigandMPNN ships NumPy-2-incompatible aliases in its vendored openfold.
+    /opt/mpnn-env/bin/python -c '
+from pathlib import Path
+import re
+root = Path("/opt/ligandmpnn") / "openfold"
+for filename, alias, expected in [
+    ("np/residue_constants.py", "int", 3),
+    ("data/templates.py", "object", 2),
+    ("np/relax/utils.py", "bool", 1),
+]:
+    path = root / filename
+    source = path.read_text()
+    patched, count = re.subn(r"\bnp\." + alias + r"\b", alias, source)
+    if count != expected:
+        raise RuntimeError(f"Unexpected NumPy alias count in {path}: {count}, expected {expected}")
+    path.write_text(patched)
+'
+    mkdir -p /opt/ligandmpnn/model_params
+    cp /opt/mpnn-weights/*.pt /opt/ligandmpnn/model_params/
+    echo 'c9cb4a671d79604111231f8dbfc7c590e06f1197453b7a6854ac6661a642f5bd  /opt/ligandmpnn/model_params/proteinmpnn_v_48_020.pt' | sha256sum -c -
+    echo '161cd264061fda9680cbb940255522ae42f2966c552d045d87913d9452a80970  /opt/ligandmpnn/model_params/ligandmpnn_v_32_010_25.pt' | sha256sum -c -
+
+%post
+    cd /
+    unset http_proxy https_proxy all_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY
+    export no_proxy='*' NO_PROXY='*'
+    /opt/rfo-env/bin/pip check
+    /opt/boltz-env/bin/pip check
+    /opt/mpnn-env/bin/pip check
+    /opt/rfo-env/bin/rfo --help >/dev/null
+    /opt/rfo-env/bin/python -c 'from importlib.metadata import version; assert version("rc-foundry") == "1.0.0"; assert version("atomworks") == "3.0.1"; assert version("biotite") == "1.6.0"'
+    /opt/rfo-env/bin/python -c 'import rfo.backprop.optimize; import rf3.inference_engines.rf3; from rfo.backprop.tools import af3_auto_detect_breaking, af3_no_breaking_point'
+    /opt/rfo-env/bin/python -c 'import torch; assert torch.version.cuda == "12.8"; print("rfo torch", torch.__version__)'
+    /opt/boltz-env/bin/boltz predict --help >/dev/null
+    /opt/mpnn-env/bin/python /opt/ligandmpnn/run.py --help >/dev/null
+    /opt/mpnn-env/bin/python -c 'import torch; assert torch.version.cuda == "12.8"; print("mpnn torch", torch.__version__)'
+    apt-get clean && rm -rf /var/lib/apt/lists/* /root/.cache/pip
+
+%environment
+    export PATH=/opt/rfo-env/bin:$PATH
+    export VIRTUAL_ENV=/opt/rfo-env
+
+%labels
+    AtomWorks 3.0.1
+    Boltz 2.2.1
+    Foundry 54d188b3c0c27654a01c875b173148a508fcd858
+    LigandMPNN 26ec57ac976ade5379920dbd43c7f97a91cf82de
+
+%runscript
+    exec "$@"

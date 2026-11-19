@@ -60,15 +60,21 @@ from chaperone.data import make_row
 
 logger = logging.getLogger(__name__)
 
-# Where the host RFD4 checkout and its conda env live. Both are overridable
-# through settings so a different install needs no code change.
-RFD4_DEFAULT_REPO = Path("/home/user/software/RFD4-Proteina")
+# The host RFD4 checkout and its conda env are both required settings: search
+# needs a real checkout with apptainer, and guessing a path here would only fail
+# later with a confusing error.
 RFD4_DEFAULT_ENV = "RFD4_Proteina"
 
 
 def _rfd4_repo() -> Path:
     configured = get_setting_field("RFD4_REPO", "") or ""
-    path = Path(configured).expanduser() if configured else RFD4_DEFAULT_REPO
+    if not configured:
+        raise FileNotFoundError(
+            "rfd4_search needs RFD4_REPO: the path to an RFD4-Proteina checkout "
+            "whose environment has apptainer. Search runs on the host, not in the "
+            "runtime SIF."
+        )
+    path = Path(configured).expanduser()
     if not (path / ".project-root").is_file():
         raise FileNotFoundError(
             f"RFD4 checkout not found at {path} (no .project-root marker). "
@@ -177,7 +183,13 @@ class RFD4SearchBlock(BlockFunction):
                 f"ckpt_path must be a directory holding model.safetensors: {candidate}"
             )
         configured = get_setting_field("RFD4_WEIGHTS_DIR", "") or ""
-        path = Path(configured).expanduser() if configured else Path("/home/user/data/models/rfd4")
+        if not configured:
+            raise FileNotFoundError(
+                "rfd4_search needs a local weight bundle: set RFD4_WEIGHTS_DIR or "
+                "ckpt_path. Search must not download weights -- the oracle host is "
+                "usually offline and an HF fetch fails before search starts."
+            )
+        path = Path(configured).expanduser()
         if not (path / "model.safetensors").is_file():
             raise FileNotFoundError(
                 f"RFD4 weights not found in {path}. Set RFD4_WEIGHTS_DIR or ckpt_path."

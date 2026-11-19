@@ -99,3 +99,5 @@ dist/
 
 # Local ad-hoc debugging scripts and their run directories
 examples/self_test/
+
+.devcontainer/

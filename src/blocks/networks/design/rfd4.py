@@ -39,19 +39,36 @@ RFD4_SIF_URL = (
     "https://huggingface.co/nvidia/RFD4-Proteina/resolve/main/"
     "runtime/rfd4-proteina-cu12-amd64.sif"
 )
-# Images live in the shared container directory; weights stay with the model
-# bundle. They are separate because the SIF is a runtime, not model data.
-RFD4_DEFAULT_SIF = Path("/home/user/data/apptainer/rfd4-proteina-cu12-amd64.sif")
-RFD4_DEFAULT_WEIGHTS = Path("/home/user/data/models/rfd4")
+SIF_FILENAME = "rfd4-proteina-cu12-amd64.sif"
+
+
+def _default_sif() -> Path:
+    """Where the SIF lands when RFD4_SIF is unset.
+
+    Images live in the container search path, so honour CHAPERONE_CONTAINER_DIRS
+    (the same setting every other block resolves images through) rather than
+    hardcoding one machine's layout. The SIF is a runtime, not model data, so it
+    does not sit beside the weights.
+    """
+    from chaperone.containers import get_container_dirs
+
+    dirs = get_container_dirs()
+    return (dirs[0] if dirs else Path.home() / ".chaperone" / "containers") / SIF_FILENAME
+
+
+def _default_weights() -> Path:
+    """Model bundle directory when RFD4_WEIGHTS_DIR is unset."""
+    return Path.home() / ".chaperone" / "models" / "rfd4"
 
 
 def _rfd4_sif_path() -> Path:
     """Resolve the RFD4 runtime SIF.
 
-    ``RFD4_SIF`` overrides; otherwise the conventional download location is used.
+    ``RFD4_SIF`` overrides; otherwise the first container search directory is
+    used.
     """
     configured = get_setting_field("RFD4_SIF", "") or ""
-    path = Path(configured).expanduser() if configured else RFD4_DEFAULT_SIF
+    path = Path(configured).expanduser() if configured else _default_sif()
     if not path.is_file():
         raise FileNotFoundError(
             f"RFD4 runtime image not found: {path}\n"
@@ -64,7 +81,7 @@ def _rfd4_sif_path() -> Path:
 def _rfd4_weights_dir() -> Path:
     """Resolve the directory holding config.json and model.safetensors."""
     configured = get_setting_field("RFD4_WEIGHTS_DIR", "") or ""
-    path = Path(configured).expanduser() if configured else RFD4_DEFAULT_WEIGHTS
+    path = Path(configured).expanduser() if configured else _default_weights()
     if not (path / "model.safetensors").is_file():
         raise FileNotFoundError(
             f"RFD4 weights not found in {path} (expected model.safetensors). "
@@ -74,7 +91,14 @@ def _rfd4_weights_dir() -> Path:
     return path
 
 
-RFD4_CONTAINER_SPEC = Image.from_existing("rfd4", RFD4_DEFAULT_SIF)
+def _container_spec() -> Image:
+    """Image spec for the prebuilt runtime SIF.
+
+    Resolved lazily: the path comes from a setting, so evaluating it at import
+    time would freeze one machine's layout. ``build_command`` re-checks the file
+    when a job actually runs.
+    """
+    return Image.from_existing("rfd4", _rfd4_sif_path())
 
 
 class RFD4Block(CompiledBlockFunction):
@@ -85,9 +109,21 @@ class RFD4Block(CompiledBlockFunction):
     _description = "RFD4-Proteina flow-matching biomolecular design"
     _script_spec = ScriptSpec(
         command=["rfd4-generate"],
-        image=RFD4_CONTAINER_SPEC,
+        # Placeholder: the real spec is resolved per run by _get_image, because
+        # the SIF path comes from a setting.
+        image=Image(name="rfd4"),
         source_url="https://github.com/RosettaCommons/RFD4-Proteina",
     )
+
+    @classmethod
+    def _get_image(cls) -> Image:
+        """Resolve the prebuilt runtime SIF from RFD4_SIF at use time.
+
+        Resolving it when the class is defined would freeze one machine's layout
+        into the import path, and the file is not present on every host that
+        merely imports the block registry.
+        """
+        return _container_spec()
     _resources = JobArgs(
         partition="gpu",
         gpu_class="large",

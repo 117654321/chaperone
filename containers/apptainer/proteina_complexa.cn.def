@@ -1,0 +1,104 @@
+BootStrap: localimage
+From: /home/user/data/apptainer/ubuntu2404.sif
+
+# The Complexa python env already exists on this host (conda env
+# `proteina-complexa`, torch 2.7.0+cu126 with torch_geometric 2.8.0), and the
+# pinned stack resolves cleanly there. Copy it in as a finished tree instead of
+# re-solving it: the uv install pulls atomworks[ml,openbabel], graphein and the
+# PyG extension wheels, which is slow and fragile to reproduce in the sandbox.
+%files
+    /home/user/data/apptainer/sources/proteina_complexa/files/0/env /opt/complexa-env
+    /home/user/data/apptainer/sources/proteina_complexa/repos/0/Proteina-Complexa-acf55a89a9a7206d5ce9abc0bf2246c3b3829f92 /opt/complexa
+
+%post
+    . /.singularity.d/env/10-docker*.sh
+
+    # China mirrors. Plain HTTP: the base image has no ca-certificates yet.
+    sed -i 's|http://archive.ubuntu.com/ubuntu|http://mirrors.tuna.tsinghua.edu.cn/ubuntu|g; s|http://security.ubuntu.com/ubuntu|http://mirrors.tuna.tsinghua.edu.cn/ubuntu|g' /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null || true
+    sed -i 's|http://archive.ubuntu.com/ubuntu|http://mirrors.tuna.tsinghua.edu.cn/ubuntu|g; s|http://security.ubuntu.com/ubuntu|http://mirrors.tuna.tsinghua.edu.cn/ubuntu|g' /etc/apt/sources.list 2>/dev/null || true
+    apt-get update -y
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        build-essential \
+        ca-certificates \
+        curl \
+        git \
+        libgl1 \
+        libglib2.0-0 \
+        libsm6 \
+        libxext6 \
+        libxrender1
+    rm -rf /var/lib/apt/lists/*
+
+%post
+    cd /
+    unset http_proxy https_proxy all_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY LD_LIBRARY_PATH
+    export no_proxy='*' NO_PROXY='*'
+    # The upstream tree imports SequenceHallucination from the search package
+    # eagerly, which drags in a heavy optional dependency chain; upstream itself
+    # only needs it for one algorithm, so make that import lazy.
+    cat > /tmp/patch_complexa.py <<'PATCH'
+from pathlib import Path
+
+base = Path("/opt/complexa/src/proteinfoundation/search")
+init = base / "__init__.py"
+s = init.read_text()
+old = "from proteinfoundation.search.sequence_hallucination import SequenceHallucination\n"
+assert s.count(old) == 1, "unexpected search/__init__.py"
+s = s.replace(old, "")
+s = s.replace('    "SequenceHallucination",\n', "")
+init.write_text(s)
+
+factory = base / "search_factory.py"
+s = factory.read_text()
+assert s.count("    SequenceHallucination,\n") == 1, "unexpected search_factory import list"
+s = s.replace("    SequenceHallucination,\n", "")
+old = (
+    '    if algorithm == "sequence_hallucination":\n'
+    "        return SequenceHallucination(proteina, inf_cfg)"
+)
+assert s.count(old) == 1, "unexpected search_factory dispatch"
+s = s.replace(
+    old,
+    '    if algorithm == "sequence_hallucination":\n'
+    "        from proteinfoundation.search.sequence_hallucination import SequenceHallucination\n"
+    "        return SequenceHallucination(proteina, inf_cfg)",
+)
+factory.write_text(s)
+print("complexa patches applied")
+PATCH
+    /opt/complexa-env/bin/python /tmp/patch_complexa.py
+    # Verify the copied env imports in place.
+    PYTHONPATH=/opt/complexa/community_models:/opt/complexa/src \
+    LD_LIBRARY_PATH=/.singularity.d/libs:/opt/complexa-env/lib \
+    BABEL_LIBDIR=/opt/complexa-env/lib/openbabel/3.2.1 \
+    BABEL_DATADIR=/opt/complexa-env/share/openbabel/3.2.1 \
+    /opt/complexa-env/bin/python -c '
+import torch, torch_geometric
+import proteinfoundation.generate
+import proteinfoundation.datasets.gen_dataset
+assert torch.__version__ == "2.7.0+cu126", torch.__version__
+print("complexa stack OK", torch.__version__, torch_geometric.__version__)
+'
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+%environment
+    export MPLBACKEND=Agg
+    export PATH=/opt/complexa-env/bin:$PATH
+    export PYTHONPATH=/opt/complexa/community_models:/opt/complexa/src
+    export VIRTUAL_ENV=/opt/complexa-env
+    export WANDB_MODE=disabled
+    export LD_LIBRARY_PATH=/.singularity.d/libs:/opt/complexa-env/lib
+    # openbabel loads its format plugins at import time. Without these, pybel
+    # prints "Unable to find OpenBabel plugins" and then dies parsing an empty
+    # format table, which takes down atomworks' openbabel_utils.
+    export BABEL_LIBDIR=/opt/complexa-env/lib/openbabel/3.2.1
+    export BABEL_DATADIR=/opt/complexa-env/share/openbabel/3.2.1
+
+%labels
+    AtomWorks 2.2.1
+    CUDA 12.6
+    Scope protein-target-generation
+    Version acf55a89a9a7206d5ce9abc0bf2246c3b3829f92
+
+%runscript
+    exec "$@"

@@ -89,6 +89,11 @@ ALLOWED: list[tuple[str, str, str]] = [
         "IPD example paths and the .env.ipd trigger",
     ),
     (
+        r"^docs/params/",
+        r"--db_dir=/databases|/databases/alphafold",
+        "AF3's official image mounts its sequence databases at /databases; that is an in-image path, not a site layout",
+    ),
+    (
         _files(".agents/skills/rosetta-params/SKILL.md"),
         r"/(?:net|software)/",
         "skill states at the top that it is IPD-specific",

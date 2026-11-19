@@ -1,0 +1,106 @@
+BootStrap: localimage
+From: /home/user/data/apptainer/ubuntu2404.sif
+
+%files
+    /home/user/data/apptainer/sources/protenix/files/0/cuda-repo /opt/cuda-repo
+    /home/user/data/apptainer/sources/protenix/files/0/wheels /opt/wheels
+    /home/user/data/apptainer/sources/protenix/files/0/hmmer /opt/hmmer_src
+
+%post
+    . /.singularity.d/env/10-docker*.sh
+
+    # China mirrors. Plain HTTP: the base image has no ca-certificates yet.
+    sed -i 's|http://archive.ubuntu.com/ubuntu|http://mirrors.tuna.tsinghua.edu.cn/ubuntu|g; s|http://security.ubuntu.com/ubuntu|http://mirrors.tuna.tsinghua.edu.cn/ubuntu|g' /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null || true
+    sed -i 's|http://archive.ubuntu.com/ubuntu|http://mirrors.tuna.tsinghua.edu.cn/ubuntu|g; s|http://security.ubuntu.com/ubuntu|http://mirrors.tuna.tsinghua.edu.cn/ubuntu|g' /etc/apt/sources.list 2>/dev/null || true
+    apt-get update -y
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        build-essential \
+        ca-certificates \
+        curl \
+        git \
+        gnupg \
+        kalign \
+        ninja-build \
+        python3-pip \
+        python3.12 \
+        python3.12-dev \
+        python3.12-venv \
+        wget
+    rm -rf /var/lib/apt/lists/*
+
+%post
+    cd /
+    unset http_proxy https_proxy all_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY
+    export no_proxy='*' NO_PROXY='*'
+    echo "deb [trusted=yes] file:///opt/cuda-repo ./" > /etc/apt/sources.list.d/cuda-local.list
+    mkdir -p /etc/apt/apt.conf.d
+    printf 'Acquire::Retries "5";\nAcquire::Check-Valid-Until "false";\n' > /etc/apt/apt.conf.d/99chaperone-retries
+    apt-get update
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends cuda-toolkit-12-8
+    rm -rf /var/lib/apt/lists/*
+
+%post
+    cd /
+    unset http_proxy https_proxy all_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY
+    export no_proxy='*' NO_PROXY='*'
+    # HMMER is staged on the host: eddylab.org is slow and sometimes unreachable
+    # from the build sandbox.
+    mkdir -p /usr/local/hmmer
+    cp -r /opt/hmmer_src /opt/hmmer_build
+    cd /opt/hmmer_build && echo 'ca70d94fd0cf271bd7063423aabb116d42de533117343a9b27a65c17ff06fbf3 hmmer-3.4.tar.gz' | sha256sum --check
+    cd /opt/hmmer_build && tar zxf hmmer-3.4.tar.gz && rm hmmer-3.4.tar.gz
+    cd /opt/hmmer_build/hmmer-3.4 && ./configure --prefix /usr/local/hmmer && make -j8 && make install
+    cd /opt/hmmer_build/hmmer-3.4/easel && make install
+    rm -rf /opt/hmmer_build /opt/hmmer_src
+
+%post
+    cd /
+    unset http_proxy https_proxy all_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY
+    export no_proxy='*' NO_PROXY='*'
+    python3.12 -m venv /opt/protenix-env
+    . /opt/protenix-env/bin/activate && pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
+    . /opt/protenix-env/bin/activate && pip install --upgrade pip setuptools wheel
+    # torch cu128 closure is staged on the host (the mirror throttles it inside
+    # the sandbox). Install staged wheels with --no-deps so pip cannot re-resolve
+    # them remotely, then add torch's pure-Python dependencies from the index.
+    . /opt/protenix-env/bin/activate && pip install --no-deps /opt/wheels/torch-*.whl /opt/wheels/nvidia_*.whl /opt/wheels/triton-*.whl
+    . /opt/protenix-env/bin/activate && pip install filelock fsspec jinja2 networkx sympy typing-extensions
+    . /opt/protenix-env/bin/activate && /opt/protenix-env/bin/python -c 'import torch; assert torch.version.cuda == "12.8"; print("torch", torch.__version__)'
+
+%post
+    cd /
+    unset http_proxy https_proxy all_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY
+    export no_proxy='*' NO_PROXY='*'
+    . /opt/protenix-env/bin/activate && pip install protenix==2.0.0 && pip check
+
+%post
+    cd /
+    unset http_proxy https_proxy all_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY
+    export no_proxy='*' NO_PROXY='*'
+    # Protenix's compile helper only lists architectures up to 100; H100 is 90 but
+    # the pinned list is what upstream ships. Keep the upstream patch additive.
+    /opt/protenix-env/bin/python -c '
+from pathlib import Path
+p = Path("/opt/protenix-env/lib/python3.12/site-packages/protenix/model/layer_norm/torch_ext_compile.py")
+s = p.read_text()
+old = "(\"100\", \"100\"),"
+assert s.count(old) == 1, "Protenix CUDA architecture patch no longer matches"
+p.write_text(s.replace(old, old + "\n        (\"120\", \"120\"),"))
+'
+    CUDA_HOME=/usr/local/cuda MAX_JOBS=2 /opt/protenix-env/bin/python -c 'import torch; import runner.batch_inference; assert torch.__version__ == "2.7.1+cu128"; assert torch.version.cuda == "12.8"; print("protenix torch", torch.__version__)'
+
+%post
+    cd /
+    apt-get clean && rm -rf /var/lib/apt/lists/* /root/.cache/pip
+
+%environment
+    export PATH=/opt/protenix-env/bin:/usr/local/hmmer/bin:$PATH
+    export VIRTUAL_ENV=/opt/protenix-env
+
+%labels
+    CUDA 12.8
+    PyTorch 2.7.1
+    Protenix 2.0.0
+
+%runscript
+    exec "$@"

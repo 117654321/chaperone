@@ -1,0 +1,73 @@
+BootStrap: localimage
+From: /home/user/data/apptainer/ubuntu2404.sif
+
+%files
+    /home/user/data/apptainer/sources/boltzgen/files/0/wheels /opt/wheels
+
+%post
+    . /.singularity.d/env/10-docker*.sh
+
+    # China mirrors. Plain HTTP: the base image has no ca-certificates yet.
+    sed -i 's|http://archive.ubuntu.com/ubuntu|http://mirrors.tuna.tsinghua.edu.cn/ubuntu|g; s|http://security.ubuntu.com/ubuntu|http://mirrors.tuna.tsinghua.edu.cn/ubuntu|g' /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null || true
+    sed -i 's|http://archive.ubuntu.com/ubuntu|http://mirrors.tuna.tsinghua.edu.cn/ubuntu|g; s|http://security.ubuntu.com/ubuntu|http://mirrors.tuna.tsinghua.edu.cn/ubuntu|g' /etc/apt/sources.list 2>/dev/null || true
+    apt-get update -y
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        build-essential \
+        ca-certificates \
+        curl \
+        git \
+        gnupg \
+        python3-pip \
+        python3.12 \
+        python3.12-dev \
+        python3.12-venv \
+        wget
+    rm -rf /var/lib/apt/lists/*
+
+%post
+    cd /
+    unset http_proxy https_proxy all_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY
+    export no_proxy='*' NO_PROXY='*'
+    python3.12 -m venv /opt/boltzgen-env
+    . /opt/boltzgen-env/bin/activate && pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
+    . /opt/boltzgen-env/bin/activate && pip install --upgrade pip setuptools wheel
+
+%post
+    cd /
+    unset http_proxy https_proxy all_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY
+    export no_proxy='*' NO_PROXY='*'
+    # The torch cu126 closure is staged on the host: the mirror throttles these
+    # wheels inside the sandbox. Torch 2.14 pulls the cuda-toolkit[...]
+    # metapackage, so the staged set is the complete closure -- install it with
+    # --no-deps so pip cannot re-resolve anything remotely.
+    . /opt/boltzgen-env/bin/activate && pip install --no-deps /opt/wheels/*.whl
+    . /opt/boltzgen-env/bin/activate && /opt/boltzgen-env/bin/python -c 'import torch; assert torch.version.cuda == "12.6"; print("boltzgen torch", torch.__version__)'
+
+%post
+    cd /
+    unset http_proxy https_proxy all_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY
+    export no_proxy='*' NO_PROXY='*'
+    . /opt/boltzgen-env/bin/activate && pip install boltzgen && pip check
+    . /opt/boltzgen-env/bin/activate && /opt/boltzgen-env/bin/python -c '
+import boltzgen
+print("boltzgen OK", getattr(boltzgen, "__version__", "n/a"))
+'
+
+%post
+    cd /
+    apt-get clean && rm -rf /var/lib/apt/lists/* /root/.cache/pip
+
+%environment
+    export PATH=/opt/boltzgen-env/bin:$PATH
+    export VIRTUAL_ENV=/opt/boltzgen-env
+    # Mirror the colabfold fix: the driver's libcuda lives in
+    # /.singularity.d/libs under --nv, and the pip nvidia packages keep their
+    # CUDA libraries under site-packages/nvidia/*/lib.
+    export LD_LIBRARY_PATH=/.singularity.d/libs:/opt/boltzgen-env/lib
+
+%labels
+    CUDA 12.6
+    Version v0.3.0
+
+%runscript
+    exec "$@"

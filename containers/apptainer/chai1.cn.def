@@ -1,0 +1,104 @@
+BootStrap: localimage
+From: /home/user/data/apptainer/ubuntu2404.sif
+
+%files
+    /home/user/data/apptainer/sources/chai1/files/0/cuda-repo /opt/cuda-repo
+    /home/user/data/apptainer/sources/chai1/files/0/wheels /opt/wheels
+
+%post
+    . /.singularity.d/env/10-docker*.sh
+
+    # China mirrors. Plain HTTP: the base image has no ca-certificates yet.
+    sed -i 's|http://archive.ubuntu.com/ubuntu|http://mirrors.tuna.tsinghua.edu.cn/ubuntu|g; s|http://security.ubuntu.com/ubuntu|http://mirrors.tuna.tsinghua.edu.cn/ubuntu|g' /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null || true
+    sed -i 's|http://archive.ubuntu.com/ubuntu|http://mirrors.tuna.tsinghua.edu.cn/ubuntu|g; s|http://security.ubuntu.com/ubuntu|http://mirrors.tuna.tsinghua.edu.cn/ubuntu|g' /etc/apt/sources.list 2>/dev/null || true
+    apt-get update -y
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        build-essential \
+        ca-certificates \
+        curl \
+        git \
+        gnupg \
+        python3-pip \
+        python3.12 \
+        python3.12-dev \
+        python3.12-venv \
+        wget
+    rm -rf /var/lib/apt/lists/*
+
+%post
+    cd /
+    unset http_proxy https_proxy all_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY
+    export no_proxy='*' NO_PROXY='*'
+    # The NVIDIA CDN truncates Packages.gz at exactly 1 MiB on this network, so
+    # apt cannot read the remote index; the closure is served from a flat local repo.
+    echo "deb [trusted=yes] file:///opt/cuda-repo ./" > /etc/apt/sources.list.d/cuda-local.list
+    mkdir -p /etc/apt/apt.conf.d
+    printf 'Acquire::Retries "5";\nAcquire::Check-Valid-Until "false";\n' > /etc/apt/apt.conf.d/99chaperone-retries
+    apt-get update
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends cuda-toolkit-12-8
+    rm -rf /var/lib/apt/lists/*
+
+%post
+    cd /
+    unset http_proxy https_proxy all_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY
+    export no_proxy='*' NO_PROXY='*'
+    python3.12 -m venv /opt/chai1-env
+    . /opt/chai1-env/bin/activate && pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
+    . /opt/chai1-env/bin/activate && pip install --upgrade pip setuptools wheel
+    # The torch cu128 closure is staged on the host. The mirror throttles these
+    # wheels inside the build sandbox (cudnn alone took >2h at ~0.09 MB/s) while
+    # the host fetches them at 5+ MB/s. Install the staged wheels with --no-deps
+    # so pip cannot re-resolve them remotely, then add torch's pure-Python
+    # dependencies from the index.
+    . /opt/chai1-env/bin/activate && pip install --no-deps /opt/wheels/torch-*.whl /opt/wheels/nvidia_*.whl /opt/wheels/triton-*.whl
+    . /opt/chai1-env/bin/activate && pip install filelock fsspec jinja2 networkx sympy typing-extensions
+    . /opt/chai1-env/bin/activate && /opt/chai1-env/bin/python -c 'import torch; assert torch.version.cuda == "12.8"; print("torch", torch.__version__)'
+
+%post
+    cd /
+    unset http_proxy https_proxy all_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY
+    export no_proxy='*' NO_PROXY='*'
+    # chai_lab pins torch<2.7; the documented override below installs everything
+    # else from its metadata and keeps torch 2.7.1+cu128.
+    . /opt/chai1-env/bin/activate && pip install --no-deps 'chai_lab==0.6.1' && pip install packaging
+    . /opt/chai1-env/bin/activate && /opt/chai1-env/bin/python -c '
+import importlib.metadata as metadata
+import subprocess
+import sys
+from packaging.requirements import Requirement
+requirements = [v for v in metadata.requires("chai_lab") if Requirement(v).name != "torch"]
+subprocess.run([sys.executable, "-m", "pip", "install", *requirements, "numpy==1.26.4", "torch==2.7.1"], check=True)
+'
+
+%post
+    cd /
+    unset http_proxy https_proxy all_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY
+    export no_proxy='*' NO_PROXY='*'
+    /opt/chai1-env/bin/python -c '
+import subprocess
+import sys
+result = subprocess.run([sys.executable, "-m", "pip", "check"], capture_output=True, text=True)
+print(result.stdout, end="")
+print(result.stderr, end="", file=sys.stderr)
+expected = "chai-lab 0.6.1 has requirement torch<2.7,>=2.3.1, but you have torch 2.7.1+cu128."
+if result.returncode != 1 or result.stdout.strip().splitlines() != [expected]:
+    raise RuntimeError("Unexpected Chai dependency conflict; only the documented Torch 2.7.1/cu128 override is allowed")
+print("Accepted documented Chai 0.6.1 Torch override; all other dependencies checked")
+'
+    /opt/chai1-env/bin/python -c 'import torch; from chai_lab.chai1 import run_inference; assert torch.version.cuda == "12.8"; print("chai torch", torch.__version__)'
+
+%post
+    cd /
+    apt-get clean && rm -rf /var/lib/apt/lists/* /root/.cache/pip
+
+%environment
+    export PATH=/opt/chai1-env/bin:$PATH
+    export VIRTUAL_ENV=/opt/chai1-env
+
+%labels
+    CUDA 12.8
+    PyTorch 2.7.1
+    Chai 0.6.1
+
+%runscript
+    exec "$@"

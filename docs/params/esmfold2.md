@@ -13,7 +13,7 @@ ESMFold2 结构预测，可选 MSA 条件化。
 - **一句话**：ESMFold2 structure prediction with optional MSA conditioning
 - **执行方式**：容器（`esmfold2`）
 - **需要上游输入**：是
-- **容器入口**：`python /home/user/software/chaperone/src/blocks/scripts/run_esmfold2_runner.py`
+- **容器入口**：`python <repo>/src/blocks/scripts/run_esmfold2_runner.py`
 
 ## 怎么调用
 

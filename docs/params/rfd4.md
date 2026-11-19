@@ -101,8 +101,12 @@ contig: "60-90, /0, B1-50, /0, C1-60"
 | `peptide_length` | `int` | `12` | Residues in the cyclic peptide (used only when cyclic=True). |
 | `peptide_chain` | `str` | `"A"` | Chain id for the designed peptide. Defaults to 'A' because downstream RFOptimization hard-requires the designed chain to be named A. A collision with a target chain is an error, not an auto-rename. |
 | `target_chains` | `Optional[list[str]]` | `None` | Target chains to keep and condition on. None keeps every chain in the input. |
-| `hotspots` | `Optional[list[int]]` | `None` | Target residue numbers the peptide should contact (C_HOT). Applies to every kept target chain. |
+| `hotspots` | `Union[list[int \| str], dict[str, str], NoneType]` | `None` | Target atoms the peptide should contact (C_HOT). C_HOT is an atom-level condition, so naming the side-chain atoms is what pins the binder to the intended epitope; a bare residue number lets the model pick any atom of that residue. Accepts 40, 'D40', 'D40:NH1,NH2', or {'D40': 'NH1,NH2'}. |
 | `cyclic_chemistry` | `str` | `"head_tail"` | Ring chemistry: 'head_tail' (N1-C12 amide, closes reliably), 'disulfide' (Cys SG-SG), or 'isopeptide' (Lys NZ-C). Head-to-tail is the only chemistry upstream measures at 100% closure. |
+| `cyclic_motif_template` | `Optional[str]` | `None` | CIF holding a motif's measured coordinates, in the SAME frame as the input structure. When given, the first residues of the ring are pinned to those coordinates and identities (C_CRD + C_SEQ) instead of being designed. Needed when the ring must reproduce a specific contact geometry rather than merely sit near hotspots. |
+| `cyclic_motif_chain` | `str` | `"E"` | Chain id of the motif inside cyclic_motif_template. |
+| `cyclic_motif_res_ids` | `Optional[list[int]]` | `None` | Residue ids of the motif in the template, in ring order. |
+| `cyclic_builder` | `Optional[str]` | `None` | Path to an alternative cyclic-input builder supporting 'motif'. Defaults to the bundled build_cyclic_rfd4_input.py. |
 
 ## `extra_overrides`
 

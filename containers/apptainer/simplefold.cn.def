@@ -1,0 +1,75 @@
+BootStrap: localimage
+From: /home/user/data/apptainer/ubuntu2404.sif
+
+%files
+    /home/user/data/apptainer/sources/simplefold/files/0/wheels /opt/wheels
+    /home/user/data/apptainer/sources/simplefold/files/0/run_simplefold.py /opt/simplefold-runner/run_simplefold.py
+    /home/user/data/apptainer/sources/simplefold/repos/0/ml-simplefold /opt/simplefold
+
+%post
+    . /.singularity.d/env/10-docker*.sh
+
+    # China mirrors. Plain HTTP: the base image has no ca-certificates yet.
+    sed -i 's|http://archive.ubuntu.com/ubuntu|http://mirrors.tuna.tsinghua.edu.cn/ubuntu|g; s|http://security.ubuntu.com/ubuntu|http://mirrors.tuna.tsinghua.edu.cn/ubuntu|g' /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null || true
+    sed -i 's|http://archive.ubuntu.com/ubuntu|http://mirrors.tuna.tsinghua.edu.cn/ubuntu|g; s|http://security.ubuntu.com/ubuntu|http://mirrors.tuna.tsinghua.edu.cn/ubuntu|g' /etc/apt/sources.list 2>/dev/null || true
+    apt-get update -y
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        build-essential \
+        ca-certificates \
+        curl \
+        git \
+        gnupg \
+        python3-pip \
+        python3.12 \
+        python3.12-dev \
+        python3.12-venv
+    rm -rf /var/lib/apt/lists/*
+
+%post
+    cd /
+    unset http_proxy https_proxy all_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY
+    export no_proxy='*' NO_PROXY='*'
+    # No CUDA toolkit: the wheel bundles its CUDA runtime and libcuda comes from
+    # the host driver through `apptainer --nv`.
+    python3.12 -m venv /opt/simplefold-env
+    . /opt/simplefold-env/bin/activate && pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
+    . /opt/simplefold-env/bin/activate && pip install --upgrade pip setuptools wheel
+
+%post
+    cd /
+    unset http_proxy https_proxy all_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY
+    export no_proxy='*' NO_PROXY='*'
+    # The torch 2.7.1 cu128 closure is staged on the host: the mirror throttles
+    # these wheels inside the sandbox. --no-deps keeps pip from re-resolving
+    # them; every dependency is already in the staged set.
+    . /opt/simplefold-env/bin/activate && pip install --no-deps /opt/wheels/*.whl
+    . /opt/simplefold-env/bin/activate && /opt/simplefold-env/bin/python -c 'import torch; assert torch.version.cuda == "12.8"; print("simplefold torch", torch.__version__)'
+
+%post
+    cd /
+    unset http_proxy https_proxy all_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY
+    export no_proxy='*' NO_PROXY='*'
+    . /opt/simplefold-env/bin/activate && pip install fair-esm==2.0.0
+    . /opt/simplefold-env/bin/activate && cd /opt/simplefold && pip install .
+    . /opt/simplefold-env/bin/activate && /opt/simplefold-env/bin/python -c '
+import sys
+from pathlib import Path
+import simplefold
+sys.path.append(str(Path(simplefold.__file__).parent))
+from simplefold import inference
+print("simplefold import OK")
+'
+    apt-get clean && rm -rf /var/lib/apt/lists/* /root/.cache/pip
+
+%environment
+    export PATH=/opt/simplefold-env/bin:$PATH
+    export VIRTUAL_ENV=/opt/simplefold-env
+    export SIMPLEFOLD_RUNNER=/opt/simplefold-runner/run_simplefold.py
+
+%labels
+    CUDA 12.8
+    Source apple/ml-simplefold
+    Version c7a5570a6be9f5c695126e27c804e77567209934
+
+%runscript
+    exec "$@"

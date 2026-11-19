@@ -247,11 +247,13 @@ def test_default_block_images_never_require_site_files(monkeypatch):
 
     monkeypatch.setattr(Image, "from_existing", reject_existing_image)
     for name in Blocks.keys():
+        if name in PREBUILT_BY_DESIGN:
+            # Resolving this one would look for the downloaded SIF, which is a
+            # host asset the test deliberately does not provide.
+            continue
         block = Blocks[name]
         image = block._get_image() if hasattr(block, "_get_image") else getattr(block, "_image", None)
         if image is not None:
-            if name in PREBUILT_BY_DESIGN:
-                continue
             assert not image.is_existing, name
             assert image._base_image, name
             config = image._command_config or {}

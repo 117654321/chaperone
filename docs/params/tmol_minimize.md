@@ -13,7 +13,7 @@ tmol 笛卡尔全原子能量最小化（beta_nov2016_cart）。
 - **一句话**：tmol Cartesian all-atom energy minimisation (beta_nov2016_cart)
 - **执行方式**：容器（`tmol`）
 - **需要上游输入**：是
-- **容器入口**：`python /home/user/software/chaperone/src/blocks/scripts/run_tmol.py`
+- **容器入口**：`python <repo>/src/blocks/scripts/run_tmol.py`
 
 ## 怎么调用
 

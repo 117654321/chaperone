@@ -1,0 +1,70 @@
+BootStrap: localimage
+From: /home/user/data/apptainer/ubuntu2404.sif
+
+%files
+    /home/user/data/apptainer/sources/e1/repos/0/E1-main /opt/E1
+
+%post
+    . /.singularity.d/env/10-docker*.sh
+
+    # China mirrors. Plain HTTP: the base image has no ca-certificates yet.
+    sed -i 's|http://archive.ubuntu.com/ubuntu|http://mirrors.tuna.tsinghua.edu.cn/ubuntu|g; s|http://security.ubuntu.com/ubuntu|http://mirrors.tuna.tsinghua.edu.cn/ubuntu|g' /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null || true
+    sed -i 's|http://archive.ubuntu.com/ubuntu|http://mirrors.tuna.tsinghua.edu.cn/ubuntu|g; s|http://security.ubuntu.com/ubuntu|http://mirrors.tuna.tsinghua.edu.cn/ubuntu|g' /etc/apt/sources.list 2>/dev/null || true
+    apt-get update -y
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        build-essential \
+        ca-certificates \
+        curl \
+        git \
+        gnupg \
+        ninja-build \
+        python3-pip \
+        python3.12 \
+        python3.12-dev \
+        python3.12-venv \
+        wget
+    rm -rf /var/lib/apt/lists/*
+
+%post
+    cd /
+    unset http_proxy https_proxy all_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY
+    export no_proxy='*' NO_PROXY='*'
+    # The repo is staged from a source tarball: this host's git URL rewrite and
+    # repeated GitHub disconnects make cloning it unreliable.
+    python3.12 -m venv /opt/e1-env
+    /opt/e1-env/bin/pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
+    /opt/e1-env/bin/pip install --upgrade pip setuptools wheel
+
+%post
+    cd /
+    unset http_proxy https_proxy all_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY
+    export no_proxy='*' NO_PROXY='*'
+    # flash-attn is deliberately NOT installed. E1's flash_attention.py wraps the
+    # import in try/except and falls back to torch SDPA, so the model still runs;
+    # the prebuilt wheel is 256 MB from GitHub Releases and could not be fetched
+    # reliably here. Set USE_FLASH_ATTN=0 to make the fallback explicit.
+    cd /opt/E1 && /opt/e1-env/bin/pip install . 'torch==2.8.0' 'transformers==4.56.2' 'numpy==2.4.1' 'accelerate==1.12.0' packaging wheel
+    /opt/e1-env/bin/python -c '
+import torch
+from E1.modeling import E1ForMaskedLM
+from E1.predictor import E1Predictor
+from E1.model.flash_attention import is_flash_attention_available
+assert torch.version.cuda == "12.8", torch.version.cuda
+print("e1 import OK; flash-attn available:", is_flash_attention_available())
+'
+    apt-get clean && rm -rf /var/lib/apt/lists/* /root/.cache/pip
+
+%environment
+    export PATH=/opt/e1-env/bin:$PATH
+    export VIRTUAL_ENV=/opt/e1-env
+    # flash-attn is not in this image; force the SDPA path so behaviour is the
+    # same regardless of what a caller's environment says.
+    export USE_FLASH_ATTN=0
+    export LD_LIBRARY_PATH=/.singularity.d/libs:/opt/e1-env/lib
+
+%labels
+    Version 219c7c7a3a803b8552ae6a44ce6dd24f133fefbd
+    FlashAttention disabled
+
+%runscript
+    exec "$@"

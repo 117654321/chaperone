@@ -1,6 +1,6 @@
 # <img src="docs/site/.assets/icon.png" alt="Chaperone icon" width="48" align="absmiddle"> Chaperone: A Reliable and Efficient Protein Design Toolset Harness
 
-Read the report: [Reliable and Efficient Agentic Protein Design with Toolset Harnessing (PDF)](docs/chaperone-report.pdf).
+Read the paper: [Reliable and Efficient Agentic Protein Design with Toolset Harnessing (bioRxiv)](https://www.biorxiv.org/content/10.64898/2026.10.19.759896v1).
 
 <p align="center">
   <img src="docs/site/.assets/chaperone-cover.png" alt="A design agent uses the Chaperone harness of blocks, examples, and skills to turn molecular inputs and design tasks into small-molecule binders, nanoparticles, and protein crystals." width="100%">
@@ -423,7 +423,7 @@ Use the `/build-block` skill in Claude Code, or see the [block development guide
 
 # Citation
 
-If you use Chaperone in your research, please cite the [report](docs/chaperone-report.pdf):
+If you use Chaperone in your research, please cite the [bioRxiv preprint](https://www.biorxiv.org/content/10.64898/2026.10.19.759896v1):
 
 ```bibtex
 @misc{butcher2026chaperone,
@@ -434,8 +434,9 @@ If you use Chaperone in your research, please cite the [report](docs/chaperone-r
             and Tyka, Michael D. and Bauer, Magnus S. and Brent, Rafi I.
             and Mittal, Anant and King, Neil P. and Baker, David},
   year = {2026},
-  howpublished = {Technical report},
-  url = {https://github.com/RosettaCommons/chaperone/blob/main/docs/chaperone-report.pdf}
+  howpublished = {bioRxiv},
+  doi = {10.64898/2026.10.19.759896},
+  url = {https://www.biorxiv.org/content/10.64898/2026.10.19.759896v1}
 }
 ```
 

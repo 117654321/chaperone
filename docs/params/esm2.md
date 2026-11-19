@@ -13,7 +13,7 @@ ESM-2 蛋白语言模型，输出序列嵌入向量。
 - **一句话**：ESM-2 protein language model for sequence embeddings
 - **执行方式**：容器（`esm2`）
 - **需要上游输入**：是
-- **容器入口**：`python /home/user/software/chaperone/src/blocks/scripts/run_esm2.py`
+- **容器入口**：`python <repo>/src/blocks/scripts/run_esm2.py`
 
 ## 怎么调用
 

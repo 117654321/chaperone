@@ -1,0 +1,95 @@
+BootStrap: localimage
+From: /home/user/data/apptainer/ubuntu2404.sif
+
+# BindCraft's python3.10 stack is built on the host and copied in as a finished
+# tree: Ubuntu 24.04 ships only python3.12, upstream's recipe depends on the
+# deadsnakes PPA (unreachable from this network), and the jax[cuda12] resolve
+# inside pip is slow here. The AlphaFold2 parameter bundle (5.6 GB upstream) is
+# replaced by the copy already on this host.
+%files
+    /home/user/data/apptainer/sources/bindcraft/files/0/env /opt/bindcraft-env
+    /home/user/data/apptainer/sources/bindcraft/files/0/ColabDesign-e31a56fe1d9b4de25c8697f3a28b75892941cc72 /opt/ColabDesign
+    # Copied to a directory of its own: two %files entries targeting the same
+    # destination do not merge reliably, and the second one wins.
+    /home/user/data/apptainer/sources/bindcraft/repos/0/BindCraft-main /opt/BindCraftMain
+    /home/user/data/apptainer/sources/bindcraft/files/0/run_bindcraft.py /opt/chaperone_run_bindcraft.py
+
+%post
+    . /.singularity.d/env/10-docker*.sh
+
+    # China mirrors. Plain HTTP: the base image has no ca-certificates yet.
+    sed -i 's|http://archive.ubuntu.com/ubuntu|http://mirrors.tuna.tsinghua.edu.cn/ubuntu|g; s|http://security.ubuntu.com/ubuntu|http://mirrors.tuna.tsinghua.edu.cn/ubuntu|g' /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null || true
+    sed -i 's|http://archive.ubuntu.com/ubuntu|http://mirrors.tuna.tsinghua.edu.cn/ubuntu|g; s|http://security.ubuntu.com/ubuntu|http://mirrors.tuna.tsinghua.edu.cn/ubuntu|g' /etc/apt/sources.list 2>/dev/null || true
+    apt-get update -y
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        bzip2 \
+        ca-certificates \
+        curl \
+        ffmpeg \
+        git \
+        libgmp10 \
+        tar \
+        wget
+    rm -rf /var/lib/apt/lists/*
+
+%post
+    cd /
+    unset http_proxy https_proxy all_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY LD_LIBRARY_PATH
+    export no_proxy='*' NO_PROXY='*'
+    # The staged venv was created at a different prefix; rewrite the console
+    # script shebangs and pyvenv.cfg home so the interpreter resolves in place.
+    for f in /opt/bindcraft-env/bin/*; do
+        if [ -f "$f" ] && head -1 "$f" 2>/dev/null | grep -q '^#!.*bin/python'; then
+            sed -i '1s|^#!.*bin/python[0-9.]*|#!/opt/bindcraft-env/bin/python|' "$f"
+        fi
+    done
+    sed -i 's|^home = .*|home = /opt/bindcraft-env/bin|' /opt/bindcraft-env/pyvenv.cfg 2>/dev/null || true
+    /opt/bindcraft-env/bin/python -c 'import sys; print("bindcraft python", sys.version.split()[0])'
+
+%post
+    cd /
+    unset http_proxy https_proxy all_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY
+    export no_proxy='*' NO_PROXY='*'
+    # pyrosetta is already in the staged env (copied from the RAPiDock conda
+    # env, same 2026.29 quarterly build for py310); the quarterly channel serves
+    # the 1.6 GB wheel at ~40 kB/s from this network.
+    /opt/bindcraft-env/bin/pip install --no-cache-dir --no-deps -e /opt/ColabDesign
+
+%post
+    cd /
+    unset http_proxy https_proxy all_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY
+    export no_proxy='*' NO_PROXY='*'
+    # The AlphaFold2 parameter bundle is bind-mounted at run time; the image only
+    # needs the directory to exist.
+    mv /opt/BindCraftMain /opt/BindCraft
+    cp /opt/chaperone_run_bindcraft.py /opt/BindCraft/chaperone_run_bindcraft.py
+    rm -f /opt/chaperone_run_bindcraft.py
+    mkdir -p /opt/BindCraft/params
+    chmod 0755 /opt/BindCraft/functions/dssp /opt/BindCraft/functions/DAlphaBall.gcc /opt/BindCraft/chaperone_run_bindcraft.py
+    # jax's cuda plugin resolves nvcc via the nvidia namespace package, whose
+    # __file__ is None; pointing CUDA_ROOT at the package directory sidesteps it.
+    CUDA_ROOT=/opt/bindcraft-env/lib/python3.10/site-packages/nvidia/cuda_nvcc \
+    /opt/bindcraft-env/bin/python -c 'import colabdesign, jax, jaxlib, pyrosetta; print("bindcraft import OK", jax.__version__)'
+    mkdir -p /opt/BindCraft/manifest
+    /opt/bindcraft-env/bin/pip freeze > /opt/BindCraft/manifest/pip-freeze.txt
+    apt-get clean && rm -rf /var/lib/apt/lists/* /root/.cache/pip
+
+%environment
+    export BINDCRAFT_HOME=/opt/BindCraft
+    export CUDA_ROOT=/opt/bindcraft-env/lib/python3.10/site-packages/nvidia/cuda_nvcc
+    export PATH=/opt/bindcraft-env/bin:$PATH
+    export PYTHONNOUSERSITE=1
+    export PYTHONUNBUFFERED=1
+    export TMPDIR=/tmp
+    export VIRTUAL_ENV=/opt/bindcraft-env
+    export XLA_PYTHON_CLIENT_PREALLOCATE=false
+    export LD_LIBRARY_PATH=/.singularity.d/libs:/opt/bindcraft-env/lib
+
+%labels
+    CUDA 12
+    License MIT-and-third-party
+    Revision efb5bfeb8b4b1a5944256f979c34e0c8e6a82d9d
+    Source https://github.com/martinpacesa/BindCraft
+
+%runscript
+    exec "$@"

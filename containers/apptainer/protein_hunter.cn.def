@@ -1,0 +1,91 @@
+BootStrap: localimage
+From: /home/user/data/apptainer/ubuntu2404.sif
+
+%files
+    /home/user/data/apptainer/sources/protein_hunter/files/0/wheels /opt/wheels
+    /home/user/data/apptainer/sources/protein_hunter/files/0/py310env /opt/py310
+    /home/user/data/apptainer/sources/protein_hunter/repos/0/Protein-Hunter-main /opt/protein_hunter
+
+%post
+    . /.singularity.d/env/10-docker*.sh
+
+    # China mirrors. Plain HTTP: the base image has no ca-certificates yet.
+    sed -i 's|http://archive.ubuntu.com/ubuntu|http://mirrors.tuna.tsinghua.edu.cn/ubuntu|g; s|http://security.ubuntu.com/ubuntu|http://mirrors.tuna.tsinghua.edu.cn/ubuntu|g' /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null || true
+    sed -i 's|http://archive.ubuntu.com/ubuntu|http://mirrors.tuna.tsinghua.edu.cn/ubuntu|g; s|http://security.ubuntu.com/ubuntu|http://mirrors.tuna.tsinghua.edu.cn/ubuntu|g' /etc/apt/sources.list 2>/dev/null || true
+    apt-get update -y
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        build-essential \
+        bzip2 \
+        ca-certificates \
+        curl \
+        git \
+        libgmp10 \
+        tar \
+        wget
+    rm -rf /var/lib/apt/lists/*
+
+%post
+    cd /
+    unset http_proxy https_proxy all_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY
+    export no_proxy='*' NO_PROXY='*'
+    # Ubuntu 24.04 ships python3.12 only, and the deadsnakes PPA that upstream's
+    # recipe relies on is not reachable from this network. A python3.10 tree built
+    # on the host is staged instead; Repoint its prefix at /opt/py310.
+    test -x /opt/py310/bin/python3.10
+    /opt/py310/bin/python3.10 -m venv --system-site-packages /opt/protein-hunter-env
+    /opt/protein-hunter-env/bin/pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
+    /opt/protein-hunter-env/bin/pip install --upgrade pip setuptools wheel
+
+%post
+    cd /
+    unset http_proxy https_proxy all_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY
+    export no_proxy='*' NO_PROXY='*'
+    # The torch 2.11 cu128 closure (cp310) is staged on the host. Torch 2.11
+    # pulls the cuda-toolkit[...] metapackage, so the staged set is the complete
+    # closure -- install it with --no-deps so pip cannot re-resolve remotely.
+    /opt/protein-hunter-env/bin/pip install --no-deps /opt/wheels/*.whl
+    /opt/protein-hunter-env/bin/python -c 'import torch; assert torch.version.cuda == "12.8"; print("protein_hunter torch", torch.__version__)'
+
+%post
+    cd /
+    unset http_proxy https_proxy all_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY
+    export no_proxy='*' NO_PROXY='*'
+    cd /opt/protein_hunter/boltz_ph && /opt/protein-hunter-env/bin/pip install --no-cache-dir -e .
+    /opt/protein-hunter-env/bin/pip install --no-cache-dir matplotlib seaborn prody tqdm PyYAML requests pypdb py3Dmol
+    /opt/protein-hunter-env/bin/pip install --no-cache-dir --upgrade 'numpy==1.26.4' 'numba==0.61.0' 'llvmlite==0.44.0' 'ml-collections==1.0.0'
+
+%post
+    cd /
+    unset http_proxy https_proxy all_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY
+    export no_proxy='*' NO_PROXY='*'
+    # The LigandMPNN checkpoints are staged from the host's ligandmpnn model
+    # directory rather than fetched by get_model_params.sh.
+    chmod 0755 /opt/protein_hunter/utils/DAlphaBall.gcc
+    test -s /opt/protein_hunter/LigandMPNN/model_params/proteinmpnn_v_48_020.pt
+    test -s /opt/protein_hunter/LigandMPNN/model_params/ligandmpnn_v_32_010_25.pt
+    cd /opt/protein_hunter/boltz_ph && /opt/protein-hunter-env/bin/python -c '
+import ml_collections, numba, torch
+assert torch.__version__.startswith("2.11.0"), torch.__version__
+assert torch.version.cuda == "12.8", torch.version.cuda
+from pipeline import ProteinHunter_Boltz
+from LigandMPNN.wrapper import LigandMPNNWrapper
+print("protein_hunter import OK")
+'
+    cd /opt/protein_hunter/boltz_ph && /opt/protein-hunter-env/bin/python design.py --help > /dev/null
+    /opt/protein-hunter-env/bin/pip check
+    mkdir -p /opt/protein_hunter/manifest
+    /opt/protein-hunter-env/bin/pip freeze > /opt/protein_hunter/manifest/pip-freeze.txt
+    apt-get clean && rm -rf /var/lib/apt/lists/* /root/.cache/pip
+
+%environment
+    export PATH=/opt/protein-hunter-env/bin:$PATH
+    export VIRTUAL_ENV=/opt/protein-hunter-env
+    export LD_LIBRARY_PATH=/.singularity.d/libs:/opt/protein-hunter-env/lib
+
+%labels
+    CUDA 12.8
+    PyTorch 2.11.0
+    Version a3e048e96c93953f022d15a4d35cd744b7e39e41
+
+%runscript
+    exec "$@"

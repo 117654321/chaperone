@@ -1,0 +1,76 @@
+BootStrap: localimage
+From: /home/user/data/apptainer/ubuntu2404.sif
+
+# Upstream's recipe pins CUDA 13.0 / torch 2.11.0+cu130, which this host's
+# driver (570.211, max CUDA 12.8) cannot run. Torch 2.11.0 also ships a +cu128
+# build, so the toolkit and the wheel both move to 12.8 and the torch version
+# stays put.
+
+%files
+    /home/user/data/apptainer/sources/esmfold2/files/0/wheels /opt/wheels
+    /home/user/data/apptainer/sources/esmfold2/files/0/run_esmfold2_runner.py /opt/esmfold2/run_esmfold2_runner.py
+
+%post
+    . /.singularity.d/env/10-docker*.sh
+
+    # China mirrors. Plain HTTP: the base image has no ca-certificates yet.
+    sed -i 's|http://archive.ubuntu.com/ubuntu|http://mirrors.tuna.tsinghua.edu.cn/ubuntu|g; s|http://security.ubuntu.com/ubuntu|http://mirrors.tuna.tsinghua.edu.cn/ubuntu|g' /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null || true
+    sed -i 's|http://archive.ubuntu.com/ubuntu|http://mirrors.tuna.tsinghua.edu.cn/ubuntu|g; s|http://security.ubuntu.com/ubuntu|http://mirrors.tuna.tsinghua.edu.cn/ubuntu|g' /etc/apt/sources.list 2>/dev/null || true
+    apt-get update -y
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        build-essential \
+        ca-certificates \
+        curl \
+        git \
+        gnupg \
+        python3-pip \
+        python3.12 \
+        python3.12-dev \
+        python3.12-venv \
+        wget
+    rm -rf /var/lib/apt/lists/*
+
+%post
+    cd /
+    unset http_proxy https_proxy all_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY
+    export no_proxy='*' NO_PROXY='*'
+    python3.12 -m venv /opt/esmfold2-env
+    . /opt/esmfold2-env/bin/activate && pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
+    . /opt/esmfold2-env/bin/activate && pip install --upgrade pip setuptools wheel
+
+%post
+    cd /
+    unset http_proxy https_proxy all_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY
+    export no_proxy='*' NO_PROXY='*'
+    # The torch 2.11 cu128 closure is staged on the host. Torch 2.11 pulls the
+    # cuda-toolkit[...] metapackage instead of individual nvidia-* wheels, so the
+    # staged set is the complete closure -- install all of it with --no-deps so
+    # pip cannot re-resolve anything remotely. Globs must be expanded by the
+    # shell: pip parses a literal 'cuda-*.whl' as a malformed wheel filename.
+    . /opt/esmfold2-env/bin/activate && pip install --no-deps /opt/wheels/*.whl
+    . /opt/esmfold2-env/bin/activate && /opt/esmfold2-env/bin/python -c 'import torch; assert torch.version.cuda == "12.8"; print("esmfold2 torch", torch.__version__)'
+
+%post
+    cd /
+    unset http_proxy https_proxy all_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY
+    export no_proxy='*' NO_PROXY='*'
+    . /opt/esmfold2-env/bin/activate && pip install esm==3.4.1.post1 && pip check
+    . /opt/esmfold2-env/bin/activate && /opt/esmfold2-env/bin/python -c '
+from esm.models.esmfold2 import EsmFold2Model, ESMFold2InputBuilder
+print("esmfold2 import OK")
+'
+
+%post
+    cd /
+    apt-get clean && rm -rf /var/lib/apt/lists/* /root/.cache/pip
+
+%environment
+    export PATH=/opt/esmfold2-env/bin:$PATH
+    export VIRTUAL_ENV=/opt/esmfold2-env
+
+%labels
+    CUDA 12.8
+    Version esm-3.4.1.post1/torch-2.11.0
+
+%runscript
+    exec "$@"

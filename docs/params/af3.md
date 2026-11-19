@@ -65,6 +65,8 @@ h = engine.run("af3", data=upstream_handler, <参数>=<值>)
 | `add_ptm_at_mapped_residues` | `Optional[dict]` | `None` | 共价修饰的 {ptmType: 原始残基键} 映射。残基键（如 'A10'）在 RFD3 的 diffused_index_map 中查找，定位到设计链中的对应位置。 |
 | `add_ptm_at_residues` | `Optional[list[dict]]` | `None` | 直接加到蛋白序列上的 AF3 修饰 dict 列表。每项应含 'ptmType' 与 'ptmPosition' 键。与 add_ptm_at_mapped_residues 不同，这里的编号是设计链自身的编号。 |
 | `consolidate_intermediates` | `bool` | `true` | 编译后把每个设计冗余的逐样本子目录（outputs/<design>/seed-*_sample-*/）打包成单个未压缩的 outputs/<design>/_intermediates.tar。 |
+| `include_bonds` | `bool` | `false` | Emit cross-residue bonds from the design as AF3 ``bondedAtomPairs``. Required for cyclic peptides: without the closing bond AF3 folds the chain as a linear polymer and scores it as such. |
+| `msa_json` | `Optional[str]` | `None` | Path to a JSON cache written by the example's prep_msa.py: {'sequence': ..., 'unpairedMsa': ..., 'pairedMsa': ..., 'templates': [...]}. Chains whose sequence matches get that MSA and template set. Without it AF3 folds every chain in single-sequence mode, which caps pLDDT in the 30-50 range no matter how good the design is. Designed chains never match, so they stay MSA-free -- which is correct: a new sequence has no homologs to find. |
 | `buckets` | `Optional[list[int]]` | `None` | JIT 编译的 token 数分桶。None 用内部脚本的智能默认（小 token 数细分，大 token 数粗分）。必须严格递增。 |
 | `flash_attention_implementation` | `str` | `"triton"` | 'triton'（最快，需 Ampere 及以上）、'cudnn' 或 'xla'（可移植）。 |
 | `conformer_max_iterations` | `Optional[int]` | `None` | RDKit 构象搜索最大迭代数。None 用 RDKit 默认值。 |

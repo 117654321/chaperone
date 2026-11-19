@@ -45,10 +45,13 @@ from pathlib import Path
 import numpy as np
 
 HERE = Path(__file__).resolve().parent
-DEFAULT_SOURCE = Path(
-    "/home/user/software/RFD4-Proteina/docs/examples/inputs/5o45_cropped.cif.zst"
-)
-DB = Path("/home/user/data/models/alphafold3_models/public_databases")
+# Upstream ships this input inside the RFD4-Proteina checkout. RFD4_REPO names
+# that checkout; the rfd4 block reads the same setting.
+_REPO = os.environ.get("RFD4_REPO", "")
+DEFAULT_SOURCE = Path(_REPO) / "docs/examples/inputs/5o45_cropped.cif.zst" if _REPO else None
+# AF3 database directory; set AF3_DB_DIR.
+_DB = os.environ.get("AF3_DB_DIR", "")
+DB = Path(_DB) if _DB else None
 
 KEEP_CHAIN = "A"
 NEW_CHAIN = "B"
@@ -151,6 +154,11 @@ def main():
     parser.add_argument("--cpus", type=int, default=os.cpu_count())
     args = parser.parse_args()
 
+    if args.source is None:
+        raise SystemExit(
+            "no source structure: set RFD4_REPO to the RFD4-Proteina checkout "
+            "(the example input ships there) or pass --source"
+        )
     if not args.source.is_file():
         raise SystemExit(f"upstream input not found: {args.source}")
 
@@ -223,6 +231,11 @@ def main():
         return
 
     sequence = target_sequence(target)
+    if DB is None:
+        raise SystemExit(
+            "AF3 database directory not set: export AF3_DB_DIR to the directory "
+            "holding bfd-first_non_consensus_sequences.fasta, uniref90_2022_05.fa, ..."
+        )
     print(f"\nRunning the AF3 genetic search for {len(sequence)} residues...", flush=True)
     result = run_msa_search(sequence, args.cpus)
     rows = len(result.unpaired_msa.splitlines()) if result.unpaired_msa else 0

@@ -40,8 +40,8 @@ h = engine.run("ligand_ddg", data=upstream_handler, <参数>=<值>)
 | `command_template` | `Optional[List[str]]` | `None` | — |
 | `cloud` | `bool` | `false` | — |
 | `rosetta_bin` | `str` | _运行时计算_ | rosetta_scripts 可执行文件路径 |
-| `protocol` | `str` | `"/home/user/software/chaperone/src/blocks/scripts/ddg_protocol.xml"` | Rosetta XML 协议文件路径 |
-| `flags` | `str` | `"/home/user/software/chaperone/src/blocks/scripts/flags_rescore_genpot"` | Rosetta flags 文件路径 |
+| `protocol` | `str` | `"<repo>/src/blocks/scripts/ddg_protocol.xml"` | Rosetta XML 协议文件路径 |
+| `flags` | `str` | `"<repo>/src/blocks/scripts/flags_rescore_genpot"` | Rosetta flags 文件路径 |
 | `dalphaball_bin` | `str \| None` | _运行时计算_ | 内置 Holes filter 需要的 DAlphaBall 可执行文件；也会在 PATH 中查找。 |
 | `override_param_file` | `str \| None` | `None` | 覆盖 -extra_res 用的配体 .params 文件路径。绕开按配体名自动解析。 |
 | `override_ligand_names` | `list[str] \| None` | `None` | 覆盖配体三字母代码（如 ['FAD', 'IAI']）。绕开从结构元数据自动检测。使用每个结构原子数组中第一个匹配到的名字。 |

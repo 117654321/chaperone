@@ -62,6 +62,21 @@ def type_text(ann) -> str:
     return re.sub(r"<class '([^']+)'>", r"\1", t)
 
 
+def _repo_relative(value: str) -> str:
+    """把仓库内的绝对路径换成 ``<repo>/...``，其余原样返回。
+
+    默认值里的脚本路径由 ``Path(__file__)`` 推导，导出时已经是绝对路径。写进
+    文档会把某台机器的目录布局固化下来，换一台机器读起来就是错的。
+    """
+    if not value.startswith("/"):
+        return value
+    repo_root = Path(__file__).resolve().parents[1]
+    try:
+        return f"<repo>/{Path(value).resolve().relative_to(repo_root).as_posix()}"
+    except (OSError, ValueError):
+        return value
+
+
 def default_text(field) -> str:
     from pydantic_core import PydanticUndefined
 
@@ -75,6 +90,7 @@ def default_text(field) -> str:
     if isinstance(v, (int, float)):
         return f"`{v}`"
     if isinstance(v, str):
+        v = _repo_relative(v)
         return f'`"{v}"`' if v else '`""`'
     if isinstance(v, (list, tuple)):
         return "`[]`" if not v else f"`{list(v)}`"
@@ -93,6 +109,31 @@ def esc(s: str) -> str:
     text = text.replace("\\|", "\x00")
     text = text.replace("|", "\\|")
     return text.replace("\x00", "\\|").strip()
+
+
+def _render_entrypoint(command: list[str]) -> str:
+    """入口命令，把仓库内脚本路径改成 ``<repo>/...``。
+
+    ``_script_spec.command`` 里的脚本路径由 ``Path(__file__)`` 推导，导出时已经
+    是绝对路径。写进文档会把某台机器的目录布局固化下来，换一台机器读起来就是
+    错的；仓库内路径用占位符，其余（``python``、容器内路径）原样保留。
+    """
+    repo_root = Path(__file__).resolve().parents[1]
+    rendered = []
+    for part in command:
+        # Only rewrite arguments that already name a real path inside the repo.
+        # A bare command ("python") or a flag ("--db_dir=/databases") must pass
+        # through untouched, so require an existing absolute path first.
+        candidate = Path(part)
+        if not candidate.is_absolute():
+            rendered.append(part)
+            continue
+        try:
+            resolved = candidate.resolve()
+            rendered.append(f"<repo>/{resolved.relative_to(repo_root).as_posix()}")
+        except (OSError, ValueError):
+            rendered.append(part)
+    return " ".join(rendered)
 
 
 def param_table(fields: dict) -> list[str]:
@@ -513,7 +554,7 @@ def render(name: str) -> str:
         f"{'是' if getattr(cls, '_requires_input', False) else '否（源 block）'}"
     )
     if getattr(cls, "_script_spec", None):
-        L.append(f"- **容器入口**：`{' '.join(cls._script_spec.command)}`")
+        L.append(f"- **容器入口**：`{_render_entrypoint(cls._script_spec.command)}`")
     L.append("")
 
     # 调用方式

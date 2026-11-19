@@ -13,7 +13,7 @@ GPU 版 Rosetta 能量，比 CPU 版快。需要配体原子名和 SMILES 对齐
 - **一句话**：tmol protein-ligand interface ddG + per-term breakdown
 - **执行方式**：容器（`tmol`）
 - **需要上游输入**：是
-- **容器入口**：`python /home/user/software/chaperone/src/blocks/scripts/run_tmol.py`
+- **容器入口**：`python <repo>/src/blocks/scripts/run_tmol.py`
 
 ## 怎么调用
 

@@ -13,7 +13,7 @@
 - **一句话**：Predict transition-metal binding sites with the Metal3D 3D-CNN
 - **执行方式**：容器（`metal3d`）
 - **需要上游输入**：是
-- **容器入口**：`python /home/user/software/chaperone/src/blocks/scripts/run_metal3d.py`
+- **容器入口**：`python <repo>/src/blocks/scripts/run_metal3d.py`
 
 ## 怎么调用
 
