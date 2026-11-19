@@ -263,3 +263,14 @@ def test_af3_mmcif_manifest_can_include_msas(tmp_path, monkeypatch):
     metadata = json.loads((tmp_path / "af3_manifest" / "design.json").read_text())
     assert metadata["msa_depth"] == 2
     assert metadata["msa_depths"] == {"A": 2}
+
+
+def test_include_bonds_forces_the_json_mode():
+    """`bondedAtomPairs` exists only in the JSON dialect.
+
+    The mmCIF route passes the structure to AF3 and lets it derive its own
+    topology, so a cyclic peptide's closing bond never arrives and the ring is
+    folded as a linear polymer (measured: iptm 0.09 vs 0.88 from Boltz).
+    """
+    assert AlphaFold3Block()._use_mmcif_input()  # default stays mmcif
+    assert not AlphaFold3Block(include_bonds=True)._use_mmcif_input()

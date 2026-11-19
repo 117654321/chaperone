@@ -395,6 +395,120 @@ def fill_af3_json_from_template(
     return json_data
 
 
+def extract_bonded_atom_pairs(
+    atom_array, chain_renames: dict[str, str] | None = None
+) -> list[list[list]] | None:
+    """Cross-residue covalent bonds in AF3's ``bondedAtomPairs`` form.
+
+    AF3 takes bonds as ``[[chain, res_id, atom_name], [chain, res_id, atom_name]]``
+    with 1-based residue numbers. Only inter-residue bonds belong here: AF3
+    derives intra-residue connectivity from the CCD, and repeating those would
+    raise ``Bonds are not unique``.
+
+    These are what make a cyclic peptide a ring in AF3. Without them the model
+    folds the chain as a linear polymer, so a head-to-tail macrocycle is scored
+    as if its ends were free -- measured on a 14-residue ring: iptm 0.09 versus
+    0.88 from Boltz, which does receive the closure.
+
+    Intermediates lose bonds: RFO writes its result as PDB, which has no
+    ``struct_conn`` category, so a perfectly closed ring arrives here with
+    ``bonds is None``. Rather than trust the bond list alone, this also detects
+    a ring geometrically -- if a chain's first and last backbone atoms sit within
+    bonding distance of each other, that is a closure regardless of what the file
+    format recorded.
+
+    Returns ``None`` when there is nothing to declare, which is what AF3 expects
+    for an unbonded complex.
+    """
+    import numpy as np
+
+    chain_ids = np.asarray([str(c) for c in atom_array.chain_id])
+    res_ids = np.asarray(atom_array.res_id)
+    atom_names = np.asarray([str(a) for a in atom_array.atom_name])
+    renames = chain_renames or {}
+
+    # Residue numbering must follow what the JSON emits, which is per-chain
+    # 1..N in chain order -- not the structure's original res_id.
+    new_res_ids = np.zeros(len(res_ids), dtype=int)
+    for chain in dict.fromkeys(chain_ids):
+        mask = chain_ids == chain
+        for new_id, res_id in enumerate(dict.fromkeys(res_ids[mask]), start=1):
+            new_res_ids[mask & (res_ids == res_id)] = new_id
+
+    def as_pair(index_a: int, index_b: int) -> list[list]:
+        return [
+            [str(renames.get(chain_ids[index_a], chain_ids[index_a])),
+             int(new_res_ids[index_a]), str(atom_names[index_a])],
+            [str(renames.get(chain_ids[index_b], chain_ids[index_b])),
+             int(new_res_ids[index_b]), str(atom_names[index_b])],
+        ]
+
+    pairs = []
+    bonds = getattr(atom_array, "bonds", None)
+    if bonds is not None and len(bonds.as_array()):
+        for atom_a, atom_b, _ in bonds.as_array():
+            a, b = int(atom_a), int(atom_b)
+            # Intra-residue bonds come from the CCD; only cross-residue ones are
+            # meaningful here, and they are exactly what defines the ring.
+            if chain_ids[a] == chain_ids[b] and res_ids[a] == res_ids[b]:
+                continue
+            pairs.append(as_pair(a, b))
+
+    for extra in _geometric_ring_closures(
+        atom_array, chain_ids, res_ids, atom_names, new_res_ids, renames
+    ):
+        pairs.append(extra)
+
+    if not pairs:
+        return None
+    # AF3 rejects duplicate pairs outright.
+    unique = {tuple(map(tuple, pair)) for pair in pairs}
+    return [list(map(list, pair)) for pair in unique]
+
+
+def _geometric_ring_closures(
+    atom_array, chain_ids, res_ids, atom_names, new_res_ids, renames
+):
+    """Detect head-to-tail rings that the file format failed to record.
+
+    A macrocycle's closing bond looks exactly like a peptide bond: within ~1.6 A
+    of N and C termini. Checking it here recovers the topology after a PDB
+    round-trip, where ``struct_conn`` cannot be carried.
+    """
+    import numpy as np
+
+    pairs = []
+    for chain in dict.fromkeys(chain_ids):
+        mask = chain_ids == chain
+        chain_res = list(dict.fromkeys(res_ids[mask]))
+        if len(chain_res) < 3:
+            continue
+
+        def atom_index(res_id, name):
+            hits = np.flatnonzero(mask & (res_ids == res_id) & (atom_names == name))
+            return int(hits[0]) if len(hits) else None
+
+        first_n = atom_index(chain_res[0], "N")
+        last_c = atom_index(chain_res[-1], "C")
+        if first_n is None or last_c is None:
+            continue
+
+        distance = float(
+            np.linalg.norm(atom_array.coord[first_n] - atom_array.coord[last_c])
+        )
+        # A free N/C pair sits 20+ A apart; a closed ring is a normal amide.
+        # 2.0 A leaves room for a strained but genuinely bonded ring.
+        if distance > 2.0:
+            continue
+        pairs.append(
+            [
+                [str(renames.get(chain, chain)), int(new_res_ids[first_n]), "N"],
+                [str(renames.get(chain, chain)), int(new_res_ids[last_c]), "C"],
+            ]
+        )
+    return pairs
+
+
 def create_af3_json_from_design(
     atom_array,
     name,
@@ -406,6 +520,7 @@ def create_af3_json_from_design(
     template_resi: None | bool | str = False,
     invert_template_resi=False,
     protein_sequences: dict[str, str] | None = None,
+    include_bonds: bool = False,
 ):
     """
     Creates a JSON input file for AF3 based on:
@@ -418,6 +533,9 @@ def create_af3_json_from_design(
     only_monomer: If True, only include the first protein chain in input pdb.
     template_resi: A string of template indices for each chain. e.g. 'A1,A2,A3,B4,B5,B6'
     invert_template_resi: If True, invert the template indices, i.g. residues other than template_resi will be templated
+    include_bonds: If True, emit cross-residue bonds as ``bondedAtomPairs``.
+        Required for cyclic peptides: without the closing bond AF3 folds the
+        chain as a linear polymer.
     """
     # empty JSON start
     json_data = {
@@ -530,6 +648,12 @@ def create_af3_json_from_design(
         )
         added_ligands.append(res_name)
         added_chains.append(chain)
+
+    if include_bonds:
+        pairs = extract_bonded_atom_pairs(atom_array)
+        if pairs:
+            json_data["bondedAtomPairs"] = pairs
+
     return json_data
 
 

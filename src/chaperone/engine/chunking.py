@@ -81,7 +81,11 @@ def _reset_chunk_sandbox_for_execution(chunk_dir: Path) -> None:
     in ``output.parquet`` and are handled by the cache check before this reset.
     """
     if chunk_dir.exists():
-        shutil.rmtree(chunk_dir)
+        # Concurrent chunk executions share the parent directory, so the tree can
+        # disappear between the exists() check and the recursive walk. That is the
+        # desired end state either way, so tolerate a vanished tree instead of
+        # failing an otherwise-successful job during sandbox reset.
+        shutil.rmtree(chunk_dir, ignore_errors=True)
     mkdir_p(chunk_dir)
 
 

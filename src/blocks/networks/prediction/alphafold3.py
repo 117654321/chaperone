@@ -889,6 +889,28 @@ class AlphaFold3Block(AF3LikePredictionBlock):
 
     # `which` is inherited from AF3LikePredictionBlock.
 
+    include_bonds: bool = Field(
+        False,
+        description=(
+            "Emit cross-residue bonds from the design as AF3 "
+            "``bondedAtomPairs``. Required for cyclic peptides: without the "
+            "closing bond AF3 folds the chain as a linear polymer and scores it "
+            "as such."
+        ),
+    )
+    msa_json: Optional[str] = Field(
+        None,
+        description=(
+            "Path to a JSON cache written by the example's prep_msa.py: "
+            "{'sequence': ..., 'unpairedMsa': ..., 'pairedMsa': ..., "
+            "'templates': [...]}. Chains whose sequence matches get that MSA and "
+            "template set. Without it AF3 folds every chain in single-sequence "
+            "mode, which caps pLDDT in the 30-50 range no matter how good the "
+            "design is. Designed chains never match, so they stay MSA-free -- "
+            "which is correct: a new sequence has no homologs to find."
+        ),
+    )
+
     # ── Throughput knobs (plumbed to run_alphafold_AF.py) ────────────────────
     buckets: Optional[list[int]] = Field(
         None,
@@ -991,6 +1013,14 @@ class AlphaFold3Block(AF3LikePredictionBlock):
         return self
 
     def _use_mmcif_input(self) -> bool:
+        # `include_bonds` and `msa_json` override the mode: both are expressed
+        # only in the JSON dialect (`bondedAtomPairs`, `unpairedMsa`/`templates`).
+        # The mmCIF route hands the structure to AF3 and lets it derive its own
+        # topology and MSA, which drops the ring closure and forces
+        # single-sequence mode -- a cyclic peptide then folds linear and every
+        # chain scores pLDDT in the 30-50 range.
+        if self.include_bonds or self.msa_json:
+            return False
         if self.input_mode == "mmcif":
             return True
         if self.input_mode == "json":
@@ -1008,6 +1038,45 @@ class AlphaFold3Block(AF3LikePredictionBlock):
         if self.msa_dirs is not None:
             return normalize_msa_dirs(self.msa_dirs)
         return default_msa_dirs()
+
+    def _inject_cached_msa(self, json_data: dict) -> int:
+        """Copy a cached MSA onto every chain whose sequence it matches.
+
+        Matching on sequence rather than chain id means one cache serves every
+        copy of a homomer, and automatically skips designed chains: a peptide
+        built by RFD4 has no entry in the cache, so it keeps AF3's
+        single-sequence path -- which is correct, since a novel sequence has no
+        homologs worth scanning 411 GB for.
+
+        Returns the number of chains that received an MSA.
+        """
+        cache_path = Path(self.msa_json).expanduser()
+        if not cache_path.is_file():
+            raise FileNotFoundError(f"msa_json not found: {cache_path}")
+        cache = json.loads(cache_path.read_text())
+
+        sequence = cache.get("sequence")
+        unpaired = cache.get("unpairedMsa") or ""
+        paired = cache.get("pairedMsa") or ""
+        templates = cache.get("templates") or []
+        if not sequence:
+            raise ValueError(f"{cache_path} has no 'sequence' field")
+
+        injected = 0
+        for entry in json_data.get("sequences", []):
+            protein = entry.get("protein")
+            if protein is None or protein.get("sequence") != sequence:
+                continue
+            protein["unpairedMsa"] = unpaired
+            protein["pairedMsa"] = paired
+            protein["templates"] = templates
+            injected += 1
+        if injected == 0:
+            logger.warning(
+                f"msa_json {cache_path} matched no chain; AF3 will run "
+                f"single-sequence. Cached sequence starts {sequence[:30]}..."
+            )
+        return injected
 
     def _inject_msas(self, json_data: dict, manifest: dict, msa_scratch: Path) -> int:
         """Put the stored a3m into every protein chain's unpairedMsa field.
@@ -1251,9 +1320,13 @@ class AlphaFold3Block(AF3LikePredictionBlock):
                     specified_ccd=self.specified_ccd,
                     disable_ccd_detection=self.disable_ccd_detection,
                     protein_sequences=protein_sequences,
+                    include_bonds=self.include_bonds,
                 )
 
             json_data["modelSeeds"] = self.model_seeds
+            if self.msa_json:
+                injected = self._inject_cached_msa(json_data)
+                logger.info(f"Injected cached MSA into {injected} chain(s)")
             if manifest is not None:
                 manifest["msa_depth"] = (
                     self._inject_msas(json_data, manifest, sandbox_dir / "msa_staging")

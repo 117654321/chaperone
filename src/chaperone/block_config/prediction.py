@@ -13,6 +13,51 @@ from chaperone.block_config.compiled import CompiledBlockFunction
 
 logger = logging.getLogger(__name__)
 
+# Synthetic column holding residue counts measured from the structure files. Used
+# only for chunk packing when no upstream block recorded a length metric (RFD4,
+# RFD1/2, or an externally supplied handler). Never written to results.
+_MEASURED_LENGTH = "__measured_residue_count"
+
+
+def _can_measure_length(handler_df) -> bool:
+    """True when the handler exposes structure paths we can read lengths from."""
+    return any(c.endswith(".path") for c in handler_df.columns)
+
+
+def _measured_lengths(df) -> list[int | None]:
+    """Residue counts per row, read from each row's last structure file.
+
+    Reads only the chain/residue columns, so this stays cheap next to model
+    inference. Anything unreadable yields None, which sorts last.
+    """
+    paths = None
+    for candidate in df.columns:
+        if candidate.endswith(".path"):
+            paths = df[candidate].to_list()
+            break
+    if paths is None:
+        return [None] * len(df)
+
+    counts: list[int | None] = []
+    for path in paths:
+        if not path:
+            counts.append(None)
+            continue
+        try:
+            from biotite.structure.io.pdb import PDBFile
+            from biotite.structure.io.pdbx import CIFFile, get_structure
+
+            p = str(path)
+            if p.endswith((".cif", ".mmcif", ".cif.gz")):
+                f = CIFFile.read(p)
+                arr = get_structure(f, model=1)
+            else:
+                arr = PDBFile.read(p).get_structure(model=1)
+            counts.append(int(len(set(zip(arr.chain_id, arr.res_id)))))
+        except Exception:
+            counts.append(None)
+    return counts
+
 
 def select_best_models(
     paths: list[str],
@@ -226,8 +271,24 @@ class AF3LikePredictionBlock(CompiledBlockFunction):
         json_schema_extra={"tier": TIER_SECONDARY},
         description=(
             "Metric column to sort on when sort_by_length=True (dot-path into "
-            "metrics JSON, as exposed by handler.unpack()). If missing from the "
-            "handler, sorting is skipped with a warning rather than erroring."
+            "metrics JSON, as exposed by handler.unpack()). When absent, the "
+            "other `sort_length_fallbacks` keys are tried, and finally the "
+            "residue count is measured from each structure file."
+        ),
+    )
+    sort_length_fallbacks: list[str] = Field(
+        default_factory=lambda: [
+            "rfd3na.num_residues",
+            "rfd4.num_residues",
+            "rf3.num_residues",
+            "rfd2.num_residues",
+            "rfd1.num_residues",
+        ],
+        json_schema_extra={"tier": TIER_SECONDARY},
+        description=(
+            "Additional metric columns tried, in order, when sort_length_key is "
+            "absent. Sorting by length only changes chunk packing, never results, "
+            "so a fallback cannot alter the science."
         ),
     )
 
@@ -246,30 +307,65 @@ class AF3LikePredictionBlock(CompiledBlockFunction):
         from chaperone.data import PipelineDataHandler
 
         df = handler.unpack(to_pandas=False)
-        if self.sort_length_key not in df.columns:
-            available = sorted(c for c in df.columns if "." in c)
-            logger.warning(
-                f"[{self.name}] sort_by_length=True but column "
-                f"'{self.sort_length_key}' not found in handler metrics; "
-                f"skipping length sort. Available metric columns: {available}. "
-                f"Set sort_length_key to one of these to enable sorting."
-            )
+
+        key = self._resolve_sort_key(df)
+        if key is None:
             return handler
+        if key == _MEASURED_LENGTH:
+            import polars as pl
+
+            df = df.with_columns(
+                pl.Series(_MEASURED_LENGTH, _measured_lengths(df), dtype=pl.Int64)
+            )
+            key = _MEASURED_LENGTH
+
         tie_breaker_col = "__pre_chunk_sort_idx"
         sorted_df = df.with_row_index(tie_breaker_col).sort(
-            [self.sort_length_key, tie_breaker_col],
+            [key, tie_breaker_col],
             nulls_last=True,
             maintain_order=True,
         )
         logger.info(
             f"[{self.name}] pre_chunk_sort: sorted {len(sorted_df)} rows by "
-            f"'{self.sort_length_key}'"
+            f"'{key}'"
         )
         # Reorder the original rows. Repacking the flattened view can discard
         # nested residue maps and replace a rewound context with a stashed path.
         result = PipelineDataHandler(handler)
         result._df = handler._df[sorted_df[tie_breaker_col].to_list()]
         return result
+
+    def _resolve_sort_key(self, df) -> str | None:
+        """Pick the column to sort by, or None when sorting is impossible.
+
+        Tries the configured key, then the fallbacks, then measuring residue
+        counts from the structure files. Length only affects how inputs are
+        packed into chunks, so a fallback cannot change results.
+        """
+        for candidate in [self.sort_length_key, *self.sort_length_fallbacks]:
+            if candidate in df.columns:
+                if candidate != self.sort_length_key:
+                    logger.info(
+                        f"[{self.name}] sort_length_key '{self.sort_length_key}' "
+                        f"absent; falling back to '{candidate}'"
+                    )
+                return candidate
+
+        if _can_measure_length(df):
+            logger.info(
+                f"[{self.name}] no length metric available; measuring residue "
+                f"counts from the structure files for chunk packing"
+            )
+            return _MEASURED_LENGTH
+
+        available = sorted(c for c in df.columns if "." in c)
+        logger.warning(
+            f"[{self.name}] sort_by_length=True but none of "
+            f"{[self.sort_length_key, *self.sort_length_fallbacks]} are present "
+            f"and residue counts could not be measured; skipping length sort. "
+            f"Available metric columns: {available}."
+        )
+        return None
 
     def _jit_safe_env(self) -> dict:
         """Env vars that force JIT/temp writes to writable in-container paths.
