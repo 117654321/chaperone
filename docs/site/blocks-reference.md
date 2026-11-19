@@ -38,6 +38,8 @@ Choose a predictor whose supported molecules, inputs, and validation evidence fi
 - [rfd3](#rfd3) — RFdiffusion3 block [[paper](https://www.biorxiv.org/content/10.1101/2025.09.18.676967v2)]
 - [rfd3_partial](#rfd3_partial) — RFdiffusion3 partial diffusion
 - [rfd3na](#rfd3na) — RFdiffusion3NA block (all-atom protein/DNA/RNA design) [[paper](https://www.biorxiv.org/content/10.1101/2025.09.18.676967v2)]
+- [rfd4](#rfd4) — RFD4-Proteina flow-matching biomolecular design [[paper](https://rfd4-proteina.org/assets/paper/RFD4-Proteina.pdf)]
+- [rfd4_search](#rfd4_search) — RFD4 reward-guided beam search with an AF3 refolding oracle [[paper](https://rfd4-proteina.org/assets/paper/RFD4-Proteina.pdf)]
 - [rfoptimization](#rfoptimization) — RF3 gradient / Boltz-2 cycling with external MPNN sequence redesign [[paper](https://www.biorxiv.org/content/10.64898/2026.09.04.749184v2)]
 - [rpxdock](#rpxdock) — Dock a z-oriented C3 asymmetric unit into an I3 cage and emit C3 trimers
 - [score_val_structures](#score_val_structures) — Score predictions against manifested validation references
@@ -134,7 +136,8 @@ Class: `ESMFold2Block` · Input: `True` · Resources: partition=`gpu`, gpu_class
 | `disable_ccd_detection` | `bool` | `False` | If True, disable automatic CCD code detection. |
 | `which` | `list[int] \| str` | `'last'` | Which structure(s) in each row's lineage to predict. 'last' (default) uses the most recent; a list of ints selects by... |
 | `sort_by_length` | `bool` | `True` | If True (default), sort the input handler by `sort_length_key` before chunking so each chunk hits a narrow JIT-bucket... |
-| `sort_length_key` | `str` | `'rfd3.num_residues'` | Metric column to sort on when sort_by_length=True (dot-path into metrics JSON, as exposed by handler.unpack()). If mi... |
+| `sort_length_key` | `str` | `'rfd3.num_residues'` | Metric column to sort on when sort_by_length=True (dot-path into metrics JSON, as exposed by handler.unpack()). When ... |
+| `sort_length_fallbacks` | `list[str]` | `<computed at runtime>` | Additional metric columns tried, in order, when sort_length_key is absent. Sorting by length only changes chunk packi... |
 | `seed` | `Optional[int]` | `0` | Random seed for input prep + diffusion sampling. |
 | `model` | `str` | `'biohub/ESMFold2'` | HuggingFace model id (or local snapshot path) for ESMFold2. |
 | `use_local_msas` | `bool` | `False` | Condition each protein chain on its precomputed A3M from the on-disk MSA stores. False runs ESMFold2 in single-sequen... |
@@ -170,7 +173,8 @@ Class: `OpenFold3Block` · Input: `True` · Resources: partition=`gpu`, gpu_clas
 | `disable_ccd_detection` | `bool` | `False` | If True, disable automatic CCD code detection. |
 | `which` | `list[int] \| str` | `'last'` | Which structure(s) in each row's lineage to predict. 'last' (default) uses the most recent; a list of ints selects by... |
 | `sort_by_length` | `bool` | `True` | If True (default), sort the input handler by `sort_length_key` before chunking so each chunk hits a narrow JIT-bucket... |
-| `sort_length_key` | `str` | `'rfd3.num_residues'` | Metric column to sort on when sort_by_length=True (dot-path into metrics JSON, as exposed by handler.unpack()). If mi... |
+| `sort_length_key` | `str` | `'rfd3.num_residues'` | Metric column to sort on when sort_by_length=True (dot-path into metrics JSON, as exposed by handler.unpack()). When ... |
+| `sort_length_fallbacks` | `list[str]` | `<computed at runtime>` | Additional metric columns tried, in order, when sort_length_key is absent. Sorting by length only changes chunk packi... |
 | `use_templates` | `bool` | `False` | Use ColabFold MSA server for template alignments. |
 | `template_json` | `Optional[str]` | `None` | Path to template JSON file for OpenFold3 input. If provided, sequences from upstream designs are filled into this tem... |
 | `cache_dir` | `str` | `<computed at runtime>` | Directory containing OpenFold3 model weights. |
@@ -205,7 +209,8 @@ Class: `Boltz2Block` · Input: `True` · Resources: partition=`gpu`, gpu_class=`
 | `disable_ccd_detection` | `bool` | `False` | If True, disable automatic CCD code detection. |
 | `which` | `list[int] \| str` | `'last'` | Which structure(s) in each row's lineage to predict. 'last' (default) uses the most recent; a list of ints selects by... |
 | `sort_by_length` | `bool` | `True` | If True (default), sort the input handler by `sort_length_key` before chunking so each chunk hits a narrow JIT-bucket... |
-| `sort_length_key` | `str` | `'rfd3.num_residues'` | Metric column to sort on when sort_by_length=True (dot-path into metrics JSON, as exposed by handler.unpack()). If mi... |
+| `sort_length_key` | `str` | `'rfd3.num_residues'` | Metric column to sort on when sort_by_length=True (dot-path into metrics JSON, as exposed by handler.unpack()). When ... |
+| `sort_length_fallbacks` | `list[str]` | `<computed at runtime>` | Additional metric columns tried, in order, when sort_length_key is absent. Sorting by length only changes chunk packi... |
 | `max_parallel_samples` | `int` | `1` | Max samples to predict in parallel. |
 | `output_format` | `str` | `'mmcif'` | Output format: 'mmcif' or 'pdb'. |
 | `use_msa_server` | `bool` | `False` | Auto-generate MSAs via mmseqs2 server. |
@@ -247,7 +252,8 @@ Class: `Boltz2SteeredBlock` · Input: `True` · Resources: partition=`gpu`, gpu_
 | `disable_ccd_detection` | `bool` | `False` | If True, disable automatic CCD code detection. |
 | `which` | `list[int] \| str` | `'last'` | Which structure(s) in each row's lineage to predict. 'last' (default) uses the most recent; a list of ints selects by... |
 | `sort_by_length` | `bool` | `True` | If True (default), sort the input handler by `sort_length_key` before chunking so each chunk hits a narrow JIT-bucket... |
-| `sort_length_key` | `str` | `'rfd3.num_residues'` | Metric column to sort on when sort_by_length=True (dot-path into metrics JSON, as exposed by handler.unpack()). If mi... |
+| `sort_length_key` | `str` | `'rfd3.num_residues'` | Metric column to sort on when sort_by_length=True (dot-path into metrics JSON, as exposed by handler.unpack()). When ... |
+| `sort_length_fallbacks` | `list[str]` | `<computed at runtime>` | Additional metric columns tried, in order, when sort_length_key is absent. Sorting by length only changes chunk packi... |
 | `max_parallel_samples` | `int` | `1` | Max samples to predict in parallel. |
 | `output_format` | `str` | `'mmcif'` | Output format: 'mmcif' or 'pdb'. |
 | `use_msa_server` | `bool` | `False` | Auto-generate MSAs via mmseqs2 server. |
@@ -285,7 +291,8 @@ Class: `RosettaFold3Block` · Input: `True` · Resources: partition=`gpu`, gpu_c
 | `disable_ccd_detection` | `bool` | `False` | If True, disable automatic CCD code detection. |
 | `which` | `list[int] \| str` | `'last'` | Which structure(s) in each row's lineage to predict. 'last' (default) uses the most recent; a list of ints selects by... |
 | `sort_by_length` | `bool` | `True` | If True (default), sort the input handler by `sort_length_key` before chunking so each chunk hits a narrow JIT-bucket... |
-| `sort_length_key` | `str` | `'rfd3.num_residues'` | Metric column to sort on when sort_by_length=True (dot-path into metrics JSON, as exposed by handler.unpack()). If mi... |
+| `sort_length_key` | `str` | `'rfd3.num_residues'` | Metric column to sort on when sort_by_length=True (dot-path into metrics JSON, as exposed by handler.unpack()). When ... |
+| `sort_length_fallbacks` | `list[str]` | `<computed at runtime>` | Additional metric columns tried, in order, when sort_length_key is absent. Sorting by length only changes chunk packi... |
 | `early_stopping_plddt_threshold` | `float` | `0.5` | Stop diffusion early if pLDDT falls below this threshold after the initial recycle. Set to 0.5 for 10-20x throughput ... |
 | `dump_trajectories` | `bool` | `False` | Write the noisy and denoised diffusion trajectories for each sample. Trajectory files are large, place the final pred... |
 | `seed_offset` | `int` | `42` | Base random seed; each chunk increments by 1. Ignored when model_seeds is set. |
@@ -327,7 +334,8 @@ Class: `ProtenixBlock` · Input: `True` · Resources: partition=`gpu`, gpu_class
 | `disable_ccd_detection` | `bool` | `False` | If True, disable automatic CCD code detection. |
 | `which` | `list[int] \| str` | `'last'` | Which structure(s) in each row's lineage to predict. 'last' (default) uses the most recent; a list of ints selects by... |
 | `sort_by_length` | `bool` | `True` | If True (default), sort the input handler by `sort_length_key` before chunking so each chunk hits a narrow JIT-bucket... |
-| `sort_length_key` | `str` | `'rfd3.num_residues'` | Metric column to sort on when sort_by_length=True (dot-path into metrics JSON, as exposed by handler.unpack()). If mi... |
+| `sort_length_key` | `str` | `'rfd3.num_residues'` | Metric column to sort on when sort_by_length=True (dot-path into metrics JSON, as exposed by handler.unpack()). When ... |
+| `sort_length_fallbacks` | `list[str]` | `<computed at runtime>` | Additional metric columns tried, in order, when sort_length_key is absent. Sorting by length only changes chunk packi... |
 | `dtype` | `str` | `'bf16'` | Precision: 'bf16' (faster, default) or 'fp32' (more precise). |
 | `use_msa` | `bool` | `False` | Enable multiple sequence alignment features. Requires HMMER databases accessible via /databases bind mount. Default F... |
 | `use_template` | `bool` | `False` | Use template structures for guided prediction. |
@@ -367,7 +375,8 @@ Class: `Chai1Block` · Input: `True` · Resources: partition=`gpu`, gpu_class=`s
 | `disable_ccd_detection` | `bool` | `False` | If True, disable automatic CCD code detection. |
 | `which` | `list[int] \| str` | `'last'` | Which structure(s) in each row's lineage to predict. 'last' (default) uses the most recent; a list of ints selects by... |
 | `sort_by_length` | `bool` | `True` | If True (default), sort the input handler by `sort_length_key` before chunking so each chunk hits a narrow JIT-bucket... |
-| `sort_length_key` | `str` | `'rfd3.num_residues'` | Metric column to sort on when sort_by_length=True (dot-path into metrics JSON, as exposed by handler.unpack()). If mi... |
+| `sort_length_key` | `str` | `'rfd3.num_residues'` | Metric column to sort on when sort_by_length=True (dot-path into metrics JSON, as exposed by handler.unpack()). When ... |
+| `sort_length_fallbacks` | `list[str]` | `<computed at runtime>` | Additional metric columns tried, in order, when sort_length_key is absent. Sorting by length only changes chunk packi... |
 | `seed` | `Optional[int]` | `None` | Random seed for reproducibility. None = random. |
 | `use_esm_embeddings` | `bool` | `True` | Use ESM embeddings for proteins. |
 | `use_msa_server` | `bool` | `False` | Auto-generate MSAs via ColabFold mmseqs2 server. |
@@ -402,7 +411,8 @@ Class: `AlphaFold3Block` · Input: `True` · Resources: partition=`gpu`, gpu_cla
 | `disable_ccd_detection` | `bool` | `False` | If True, disable automatic CCD code detection. |
 | `which` | `list[int] \| str` | `'last'` | Which structure(s) in each row's lineage to predict. 'last' (default) uses the most recent; a list of ints selects by... |
 | `sort_by_length` | `bool` | `True` | If True (default), sort the input handler by `sort_length_key` before chunking so each chunk hits a narrow JIT-bucket... |
-| `sort_length_key` | `str` | `'rfd3.num_residues'` | Metric column to sort on when sort_by_length=True (dot-path into metrics JSON, as exposed by handler.unpack()). If mi... |
+| `sort_length_key` | `str` | `'rfd3.num_residues'` | Metric column to sort on when sort_by_length=True (dot-path into metrics JSON, as exposed by handler.unpack()). When ... |
+| `sort_length_fallbacks` | `list[str]` | `<computed at runtime>` | Additional metric columns tried, in order, when sort_length_key is absent. Sorting by length only changes chunk packi... |
 | `jax_cache_dir` | `Optional[str]` | `<computed at runtime>` | Writable compilation cache mounted directly into the container |
 | `input_mode` | `Literal` | `'mmcif'` | AF3 input preparation mode. The default 'mmcif' serializes the complete AtomArray and uses AF3's native Input.from_mm... |
 | `use_local_msas` | `bool` | `False` | Inject each protein chain's precomputed a3m from the on-disk MSA stores into the AF3 input. Works with both native mm... |
@@ -413,6 +423,8 @@ Class: `AlphaFold3Block` · Input: `True` · Resources: partition=`gpu`, gpu_cla
 | `add_ptm_at_mapped_residues` | `Optional[dict]` | `None` | Map of {ptmType: original_residue_key} for covalent modifications. The residue key (e.g. 'A10') is looked up in the R... |
 | `add_ptm_at_residues` | `Optional[list[dict]]` | `None` | Direct list of AF3 modification dicts to add to the protein sequence. Each entry should have 'ptmType' and 'ptmPositi... |
 | `consolidate_intermediates` | `bool` | `True` | After compiling, pack each design's redundant per-sample subdirs (outputs/<design>/seed-*_sample-*/) into a single un... |
+| `include_bonds` | `bool` | `False` | Emit cross-residue bonds from the design as AF3 ``bondedAtomPairs``. Required for cyclic peptides: without the closin... |
+| `msa_json` | `Optional[str]` | `None` | Path to a JSON cache written by the example's prep_msa.py: {'sequence': ..., 'unpairedMsa': ..., 'pairedMsa': ..., 't... |
 | `buckets` | `Optional[list[int]]` | `None` | Token-count buckets for JIT compilation. None uses the inner script's smart default (fine-grained at small token coun... |
 | `flash_attention_implementation` | `str` | `'triton'` | 'triton' (fastest, Ampere+), 'cudnn', or 'xla' (portable). |
 | `conformer_max_iterations` | `Optional[int]` | `None` | RDKit conformer search max iterations. None uses RDKit default. |
@@ -447,7 +459,8 @@ Class: `AF3WithTargetTemplate` · Input: `True` · Resources: partition=`gpu`, g
 | `disable_ccd_detection` | `bool` | `False` | If True, disable automatic CCD code detection. |
 | `which` | `list[int] \| str` | `'last'` | Which structure(s) in each row's lineage to predict. 'last' (default) uses the most recent; a list of ints selects by... |
 | `sort_by_length` | `bool` | `True` | If True (default), sort the input handler by `sort_length_key` before chunking so each chunk hits a narrow JIT-bucket... |
-| `sort_length_key` | `str` | `'rfd3.num_residues'` | Metric column to sort on when sort_by_length=True (dot-path into metrics JSON, as exposed by handler.unpack()). If mi... |
+| `sort_length_key` | `str` | `'rfd3.num_residues'` | Metric column to sort on when sort_by_length=True (dot-path into metrics JSON, as exposed by handler.unpack()). When ... |
+| `sort_length_fallbacks` | `list[str]` | `<computed at runtime>` | Additional metric columns tried, in order, when sort_length_key is absent. Sorting by length only changes chunk packi... |
 | `jax_cache_dir` | `Optional[str]` | `<computed at runtime>` | Writable compilation cache mounted directly into the container |
 | `input_mode` | `Literal` | `'json'` | — |
 | `use_local_msas` | `bool` | `False` | Inject each protein chain's precomputed a3m from the on-disk MSA stores into the AF3 input. Works with both native mm... |
@@ -458,6 +471,8 @@ Class: `AF3WithTargetTemplate` · Input: `True` · Resources: partition=`gpu`, g
 | `add_ptm_at_mapped_residues` | `Optional[dict]` | `None` | Map of {ptmType: original_residue_key} for covalent modifications. The residue key (e.g. 'A10') is looked up in the R... |
 | `add_ptm_at_residues` | `Optional[list[dict]]` | `None` | Direct list of AF3 modification dicts to add to the protein sequence. Each entry should have 'ptmType' and 'ptmPositi... |
 | `consolidate_intermediates` | `bool` | `True` | After compiling, pack each design's redundant per-sample subdirs (outputs/<design>/seed-*_sample-*/) into a single un... |
+| `include_bonds` | `bool` | `False` | Emit cross-residue bonds from the design as AF3 ``bondedAtomPairs``. Required for cyclic peptides: without the closin... |
+| `msa_json` | `Optional[str]` | `None` | Path to a JSON cache written by the example's prep_msa.py: {'sequence': ..., 'unpairedMsa': ..., 'pairedMsa': ..., 't... |
 | `buckets` | `Optional[list[int]]` | `None` | Token-count buckets for JIT compilation. None uses the inner script's smart default (fine-grained at small token coun... |
 | `flash_attention_implementation` | `str` | `'triton'` | 'triton' (fastest, Ampere+), 'cudnn', or 'xla' (portable). |
 | `conformer_max_iterations` | `Optional[int]` | `None` | RDKit conformer search max iterations. None uses RDKit default. |
@@ -495,7 +510,8 @@ Class: `ColabFoldBlock` · Input: `True` · Resources: partition=`gpu`, gpu_clas
 | `disable_ccd_detection` | `bool` | `False` | If True, disable automatic CCD code detection. |
 | `which` | `list[int] \| str` | `'last'` | Which structure(s) in each row's lineage to predict. 'last' (default) uses the most recent; a list of ints selects by... |
 | `sort_by_length` | `bool` | `True` | If True (default), sort the input handler by `sort_length_key` before chunking so each chunk hits a narrow JIT-bucket... |
-| `sort_length_key` | `str` | `'rfd3.num_residues'` | Metric column to sort on when sort_by_length=True (dot-path into metrics JSON, as exposed by handler.unpack()). If mi... |
+| `sort_length_key` | `str` | `'rfd3.num_residues'` | Metric column to sort on when sort_by_length=True (dot-path into metrics JSON, as exposed by handler.unpack()). When ... |
+| `sort_length_fallbacks` | `list[str]` | `<computed at runtime>` | Additional metric columns tried, in order, when sort_length_key is absent. Sorting by length only changes chunk packi... |
 | `num_models` | `int` | `5` | Number of AF2 models (1-5). |
 | `num_seeds` | `int` | `1` | Number of random seeds per model. |
 | `random_seed` | `Optional[int]` | `None` | Base random seed. None = ColabFold default (0). |
@@ -530,14 +546,16 @@ Class: `BindCraftBlock` · Input: `True` · Resources: partition=`gpu`, gpu_clas
 | <span style="color: var(--claude-accent, #da7756); font-weight: 600">`number_of_final_designs`</span> | `int` | `1` | Accepted designs requested per input target. |
 | <em style="color: var(--claude-text-secondary, #6b6560)">Additional parameters</em> | | | |
 | `store_cleanup` | `bool` | `False` | When ``store='catcif'``, delete sandbox output files after they have been consolidated into the archive. Ignored othe... |
-| `max_trajectories` | `Optional[int]` | `100` | Maximum hallucination trajectories per target. None honors the advanced preset and may run until the accepted-design ... |
+| `max_trajectories` | `Optional[int]` | `100` | Maximum *successful* hallucination trajectories per target. BindCraft counts only trajectories that reach the relax s... |
 | `binder_name` | `str` | `'binder'` | Prefix for generated designs. |
+| `trajectory_budget_hours` | `Optional[float]` | `12.0` | Wall-clock budget for the design loop. BindCraft's max_trajectories counts only successful trajectories, so a target ... |
 | `filter_preset` | `str` | `'default_filters'` | Bundled BindCraft filter preset basename. |
 | `advanced_preset` | `str` | `'default_4stage_multimer'` | Bundled BindCraft advanced-settings preset basename. |
 | `filters_path` | `Optional[str]` | `None` | Optional custom filters JSON; overrides filter_preset. |
 | `advanced_path` | `Optional[str]` | `None` | Optional custom advanced JSON; overrides advanced_preset. |
 | `filter_overrides` | `dict` | `<computed at runtime>` | Shallow overrides applied to the selected filter JSON. |
 | `advanced_overrides` | `dict` | `<computed at runtime>` | Shallow overrides applied to the selected advanced JSON. |
+| `af_params_dir` | `Optional[str]` | `<computed at runtime>` | Directory holding the AlphaFold2 parameter .npz files, bind-mounted to /opt/BindCraft/params. The image ships the dir... |
 
 ---
 
@@ -620,6 +638,7 @@ Class: `DISCOBlock` · Input: `False` · Resources: partition=`gpu`, gpu_class=`
 | `noisy_guidance` | `Optional[bool]` | `None` | Enable/disable noisy guidance (default: set by experiment preset) |
 | `ckpt_path` | `Optional[str]` | `None` | Path to custom model checkpoint (default: auto-download from HuggingFace) |
 | `cache_dir` | `str` | `<computed at runtime>` | Hugging Face model cache mounted into the container |
+| `compile_cache_dir` | `str` | `<computed at runtime>` | Writable CUDA extension and temporary build cache; may be node-local. |
 
 ---
 
@@ -956,6 +975,68 @@ Class: `RFD3NABlock` · Input: `False` · Resources: partition=`gpu`, gpu_class=
 
 ---
 
+### rfd4
+
+*RFD4-Proteina structure generation.*
+
+> Corley et al. (2026) — Biomolecular design through latent reasoning with RFD4-Proteina
+> [Paper](https://rfd4-proteina.org/assets/paper/RFD4-Proteina.pdf) · [Upstream code / documentation](https://github.com/RosettaCommons/RFD4-Proteina) · [Chaperone implementation](https://github.com/RosettaCommons/chaperone/blob/main/src/blocks/networks/design/rfd4.py)
+
+Class: `RFD4Block` · Input: `False` · Resources: partition=`gpu`, gpu_class=`large`, mem=`48GB`, time=`6:00:00` · Container: `rfd4`
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| <span style="color: var(--claude-accent, #da7756); font-weight: 600">`ckpt_path`</span> | `Optional[str]` | `None` | Model bundle: an HF repo id or a local directory holding config.json and model.safetensors. None uses RFD4_WEIGHTS_DIR. |
+| <em style="color: var(--claude-text-secondary, #6b6560)">Additional parameters</em> | | | |
+| `store_cleanup` | `bool` | `False` | When ``store='catcif'``, delete sandbox output files after they have been consolidated into the archive. Ignored othe... |
+| `inputs` | `str \| dict \| None` | `None` | Path to a conditioned CIF/PDB, a directory of them, a JSON/YAML design spec, or a spec dict written inline. When a da... |
+| `num_replicates` | `int` | `1` | Designs generated per input. |
+| `batch_size` | `int` | `1` | Sampler batch size (RFD4 config key ``batch_size``). |
+| `seed` | `Optional[int]` | `None` | Base seed; each chunk offsets it by the chunk index. |
+| `extra_overrides` | `list[str]` | `<computed at runtime>` | Additional Hydra overrides passed verbatim, e.g. ['recycle_strategy=high'] or ['length=120']. |
+| `cyclic` | `bool` | `False` | Design a macrocyclic peptide binder. Rewrites each input into a conditioned CIF carrying a placeholder peptide chain ... |
+| `peptide_length` | `int` | `12` | Residues in the cyclic peptide (used only when cyclic=True). |
+| `peptide_chain` | `str` | `'A'` | Chain id for the designed peptide. Defaults to 'A' because downstream RFOptimization hard-requires the designed chain... |
+| `target_chains` | `Optional[list[str]]` | `None` | Target chains to keep and condition on. None keeps every chain in the input. |
+| `hotspots` | `list[int \| str] \| dict \| None` | `None` | Target atoms the peptide should contact (C_HOT). C_HOT is an atom-level condition, so naming the side-chain atoms is ... |
+| `cyclic_chemistry` | `str` | `'head_tail'` | Ring chemistry: 'head_tail' (N1-C12 amide, closes reliably), 'disulfide' (Cys SG-SG), or 'isopeptide' (Lys NZ-C). Hea... |
+| `cyclic_motif_template` | `Optional[str]` | `None` | CIF holding a motif's measured coordinates, in the SAME frame as the input structure. When given, the first residues ... |
+| `cyclic_motif_chain` | `str` | `'E'` | Chain id of the motif inside cyclic_motif_template. |
+| `cyclic_motif_res_ids` | `Optional[list[int]]` | `None` | Residue ids of the motif in the template, in ring order. |
+| `cyclic_builder` | `Optional[str]` | `None` | Path to an alternative cyclic-input builder supporting 'motif'. Defaults to the bundled build_cyclic_rfd4_input.py. |
+
+---
+
+### rfd4_search
+
+*Reward-guided beam search with RFD4-Proteina, on the host.*
+
+> Corley et al. (2026) — reward-guided branching and selection (search)
+> [Paper](https://rfd4-proteina.org/assets/paper/RFD4-Proteina.pdf) · [Upstream code / documentation](https://github.com/RosettaCommons/RFD4-Proteina) · [Chaperone implementation](https://github.com/RosettaCommons/chaperone/blob/main/src/blocks/networks/design/rfd4_search.py)
+
+**Execution:** This block runs `_inline` on the *host*, never in the `rfd4` runtime SIF. Upstream's AF3 oracle builds an `apptainer run` command per refold, and a container cannot start a nested one — inside the SIF search dies at warmup with `[Errno 2] No such file or directory: 'apptainer'`. Set `RFD4_REPO` and `RFD4_ENV` to a host RFD4 checkout whose environment has `apptainer` on PATH.
+
+**Cost:** Each checkpoint branches and folds every branch, so a three-checkpoint config at `n_branch=2` costs up to 6–12 AF3 refolds per replicate. The refolds share one warm worker process (first fold pays a ~27 s warm-up, later ones 4–6 s), not one container per fold. If the log reads `via direct apptainer call` rather than `via daemon at ...`, `AF3_IMAGE` / `AF3_MODEL_DIR` / `AF3_JAX_CACHE_DIR` were unset and every refold costs the full warm-up.
+
+**Rewards:** Reward metric names must be imported by `metrics_tags` on the same config; a checkpoint referencing a metric whose tag is absent fails at composition. Do not pass `~metrics` on the command line — that deletes the whole metrics config and every reward becomes unresolvable.
+
+Class: `RFD4SearchBlock` · Input: `False` · Resources: partition=`gpu`, gpu_class=`large`, mem=`64GB`, time=`12:00:00`
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| <span style="color: var(--claude-accent, #da7756); font-weight: 600">`ckpt_path`</span> | `Optional[str]` | `None` | Local model bundle. Search must not download weights: the oracle spawns containers on a host that is typically offlin... |
+| <em style="color: var(--claude-text-secondary, #6b6560)">Additional parameters</em> | | | |
+| `store_cleanup` | `bool` | `False` | When ``store='catcif'``, delete sandbox output files after they have been consolidated into the archive. Ignored othe... |
+| `inputs` | `Optional[str]` | `None` | Condition spec (YAML/JSON) or conditioned CIF to search over. A spec is resolved and staged by RFD4 itself. |
+| `search_config` | `Optional[str]` | `None` | Path to a beam-search experiment YAML (an ``inference_experiment`` config). None uses the checkout's ``inference_beam... |
+| `num_replicates` | `int` | `1` | Designs to search per input. |
+| `batch_size` | `int` | `1` | Sampler batch size. |
+| `seed` | `Optional[int]` | `None` | Base seed. |
+| `extra_overrides` | `list[str]` | `<computed at runtime>` | Extra Hydra overrides, e.g. ['search.beam_width=4']. |
+| `output_subdir` | `str` | `'search_run'` | Directory under the block sandbox for RFD4 output. |
+
+---
+
 ### rfoptimization
 
 *Refine chain A of an existing complex with RF3/Boltz and MPNN.*
@@ -1000,6 +1081,7 @@ Class: `RPXDockBlock` · Input: `True` · Resources: partition=`cpu`, mem=`8GB`,
 | `nout_top` | `int` | `1` | Number of highest scoring C3 trimers per input |
 | `beam_size` | `int` | `10000` | RPXdock hierarchical search beam size |
 | `ignored_aas` | `str` | `'CGP'` | Residue types excluded from RPX scoring; use an empty string for glycine-placeholder backbones. |
+| `cache_dir` | `str` | `<computed at runtime>` | Writable home for decompressed RPXdock scoring and symmetry caches. |
 
 ---
 
@@ -1045,7 +1127,8 @@ Class: `SimpleFoldBlock` · Input: `True` · Resources: partition=`gpu`, gpu_cla
 | `disable_ccd_detection` | `bool` | `False` | If True, disable automatic CCD code detection. |
 | `which` | `list[int] \| str` | `'last'` | Which structure(s) in each row's lineage to predict. 'last' (default) uses the most recent; a list of ints selects by... |
 | `sort_by_length` | `bool` | `True` | If True (default), sort the input handler by `sort_length_key` before chunking so each chunk hits a narrow JIT-bucket... |
-| `sort_length_key` | `str` | `'rfd3.num_residues'` | Metric column to sort on when sort_by_length=True (dot-path into metrics JSON, as exposed by handler.unpack()). If mi... |
+| `sort_length_key` | `str` | `'rfd3.num_residues'` | Metric column to sort on when sort_by_length=True (dot-path into metrics JSON, as exposed by handler.unpack()). When ... |
+| `sort_length_fallbacks` | `list[str]` | `<computed at runtime>` | Additional metric columns tried, in order, when sort_length_key is absent. Sorting by length only changes chunk packi... |
 | `tau` | `float` | `0.01` | Diffusion coefficient scaling factor. |
 | `seed` | `int` | `42` | Random seed; chunk id is added to keep chunks independent. |
 | `predict_plddt` | `bool` | `False` | Run the optional pLDDT head. This additionally loads a fixed 1.6B folding model and is substantially more memory inte... |
@@ -1454,6 +1537,7 @@ Class: `PepprBlock` · Input: `True` · Resources: Not specified
 | `metrics` | `list[PepprMetric]` | `[<PepprMetric.RMSD: 'rmsd'>, <PepprMetric.TM_SCORE: 'tm_score'>, <PepprMetric.LDDT: 'lddt'>, <PepprMetric.LDDT_PLI: 'lddt_pli'>, <PepprMetric.FNAT: 'fnat'>, <PepprMetric.IRMSD: 'irmsd'>, <PepprMetric.LRMSD: 'lrmsd'>, <PepprMetric.DOCKQ: 'dockq'>]` | Which metrics to compute. Options: rmsd, tm_score, lddt, lddt_pli, fnat, irmsd, lrmsd, dockq |
 | `rmsd_threshold` | `float` | `2.0` | RMSD threshold (Angstroms) for MonomerRMSD classification |
 | `tolerate_exceptions` | `bool` | `True` | If True, continue when individual metrics fail (e.g., lDDT-PLI with no ligand). Failed metrics are stored as None. |
+| `which` | `list[int]` | `[0, -1]` | Reference and prediction indices in the structure lineage. |
 
 ---
 

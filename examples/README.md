@@ -18,6 +18,9 @@ each design case, including its objective, workflow, and evaluation criteria.
 | [enzyme-glycosidase/](enzyme-glycosidase/) | Apo, covalent-intermediate and ligand-bound enzyme branches |
 | [enzyme-protease/](enzyme-protease/) | Substrate-conditioned enzyme design and monomer/complex checks |
 | [ribozyme-hammerhead/](ribozyme-hammerhead/) | RNA motif rescaffolding and catalytic geometry |
+| [cyclic-peptide-rfo/](cyclic-peptide-rfo/) | Head-to-tail macrocycle against PD-1, RFO sequence optimisation, and AF3 refolding |
+| [macrocycle-binder/](macrocycle-binder/) | 40-residue head-to-tail ring against PD-1, showing how ring length trades reach for variance |
+| [miniprotein-binder/](miniprotein-binder/) | De novo 50–120 residue binder against PD-L1 from upstream's condition spec, with RFO or reward-guided search |
 | [fgfr2-binder/](fgfr2-binder/) | Competitive mini-protein binders for FGFR2 (PDB 1DJS), ranked by ipSAE |
 | [benchmarks/ppi/](benchmarks/ppi/) | Binder design for the insulin receptor (4ZXB) with two inverse-folding backends |
 | [benchmarks/disco/](benchmarks/disco/) | DISCO co-design of a heme B binder, checked by AF3 refolding |
@@ -105,6 +108,10 @@ for each run so a smoke test cannot reuse a production output directory.
 | `enzyme-glycosidase/pipeline.py --test` | One backbone per two motif tasks; one sequence and apo/PTM/ligand refolds for passing rows | Foundry, `ligandmpnn`, AF3 with custom CCD input support |
 | `enzyme-protease/pipeline.py --test` | One backbone per two motif tasks; one sequence, refinement and monomer/complex refold | Foundry RFD3/RF3, `ligandmpnn`, AF3 |
 | `ribozyme-hammerhead/pipeline.py --test` | One 60-nt RNA and one AF3 refold if its motif filter passes | Foundry RFD3NA checkpoint, AF3 |
+| `cyclic-peptide-rfo/pipeline.py --test` | One 12-residue macrocycle against PD-1, one RFO cycle, one AF3 refold | RFD4-Proteina runtime SIF and weights, `rfoptimization`, AF3 |
+| `macrocycle-binder/pipeline.py --test` | One 40-residue ring against PD-1, one RFO cycle, one AF3 refold | RFD4-Proteina runtime SIF and weights, `rfoptimization`, AF3 |
+| `miniprotein-binder/pipeline.py --test` | One 50–120 residue binder against PD-L1, one RFO cycle, one AF3 refold | RFD4-Proteina runtime SIF and weights, `rfoptimization`, AF3 |
+| `miniprotein-binder/pipeline.py --search --test` | One beam-search replicate: 3 checkpoints × `n_branch=2`, up to 12 AF3 refolds inside generation | Host RFD4 checkout with `apptainer` (`RFD4_REPO` / `RFD4_ENV`), AF3 image and weights; **not** the runtime SIF |
 | `benchmarks/ppi/pipeline_foundry.py --test` | One RFD3 backbone, one FoundryMPNN sequence, one RF3 sample | Foundry container and checkpoints |
 | `benchmarks/ppi/pipeline_mpnn.py --test` | One backbone, one `mpnn` sequence, one RF3 sample | Foundry and the `ligandmpnn` image |
 | `benchmarks/disco/pipeline.py --test` | One DISCO heme-binder design at the fast preset, one AF3 sample | DISCO weights/container and licensed AF3 weights/container |

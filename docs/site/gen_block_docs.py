@@ -83,6 +83,16 @@ BLOCK_REFERENCES: dict[str, dict[str, str]] = {
         "code": "https://github.com/martinpacesa/BindCraft",
         "title": "Pacesa et al. (2024) — BindCraft: one-shot design of functional protein binders",
     },
+    "rfd4": {
+        "paper": "https://rfd4-proteina.org/assets/paper/RFD4-Proteina.pdf",
+        "code": "https://github.com/RosettaCommons/RFD4-Proteina",
+        "title": "Corley et al. (2026) — Biomolecular design through latent reasoning with RFD4-Proteina",
+    },
+    "rfd4_search": {
+        "paper": "https://rfd4-proteina.org/assets/paper/RFD4-Proteina.pdf",
+        "code": "https://github.com/RosettaCommons/RFD4-Proteina",
+        "title": "Corley et al. (2026) — reward-guided branching and selection (search)",
+    },
     "e1": {
         "paper": "https://www.biorxiv.org/content/10.1101/2025.11.12.688125v1",
         "code": "https://github.com/Profluent-AI/E1",
@@ -364,6 +374,15 @@ def _render_block(name: str, cls) -> list[str]:
     if name == "proteina_complexa":
         lines.extend([
             "**Inputs and outputs:** [Binder configuration guide](https://github.com/RosettaCommons/chaperone/blob/main/src/blocks/networks/design/proteina_complexa/input.md). Single-pass all-atom protein binder generation from a target PDB, target selection and hotspots. Outputs include target and designed binder. Run a downstream structure predictor to evaluate binding geometry and confidence; generation alone is not a binding-quality result.",
+            "",
+        ])
+    if name == "rfd4_search":
+        lines.extend([
+            "**Execution:** This block runs `_inline` on the *host*, never in the `rfd4` runtime SIF. Upstream's AF3 oracle builds an `apptainer run` command per refold, and a container cannot start a nested one — inside the SIF search dies at warmup with `[Errno 2] No such file or directory: 'apptainer'`. Set `RFD4_REPO` and `RFD4_ENV` to a host RFD4 checkout whose environment has `apptainer` on PATH.",
+            "",
+            "**Cost:** Each checkpoint branches and folds every branch, so a three-checkpoint config at `n_branch=2` costs up to 6–12 AF3 refolds per replicate. The refolds share one warm worker process (first fold pays a ~27 s warm-up, later ones 4–6 s), not one container per fold. If the log reads `via direct apptainer call` rather than `via daemon at ...`, `AF3_IMAGE` / `AF3_MODEL_DIR` / `AF3_JAX_CACHE_DIR` were unset and every refold costs the full warm-up.",
+            "",
+            "**Rewards:** Reward metric names must be imported by `metrics_tags` on the same config; a checkpoint referencing a metric whose tag is absent fails at composition. Do not pass `~metrics` on the command line — that deletes the whole metrics config and every reward becomes unresolvable.",
             "",
         ])
     if name == "foundry_mpnn":
