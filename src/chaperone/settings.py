@@ -413,6 +413,27 @@ class ChaperoneSettings(BaseSettings):
         description="Path to RFdiffusion v1 model weights directory. "
         "Mounted into the container at /opt/RFdiffusion/models/.",
     )
+    RFD4_SIF: Optional[str] = Field(
+        default=None,
+        description="Path to the RFD4-Proteina runtime SIF. When unset, the "
+        "block uses the default location under CHAPERONE_CONTAINER_DIRS.",
+    )
+    RFD4_WEIGHTS_DIR: Optional[str] = Field(
+        default=None,
+        description="Directory holding the RFD4-Proteina model bundle with "
+        "config.json and model.safetensors.",
+    )
+    RFD4_REPO: Optional[str] = Field(
+        default=None,
+        description="Path to a host RFD4-Proteina checkout marked by "
+        ".project-root. Used by rfd4_search, which runs on the host because "
+        "its AF3 oracle needs apptainer.",
+    )
+    RFD4_ENV: Optional[str] = Field(
+        default=None,
+        description="Host conda environment name for RFD4-Proteina. When "
+        "unset, the block falls back to RFD4_Proteina.",
+    )
 
     # ---------------------------
     # MCP / Campaign

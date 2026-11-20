@@ -67,3 +67,41 @@ def test_installed_package_loads_working_directory_local_overrides(tmp_path, mon
     monkeypatch.delenv("CHAPERONE_ENV_FILE", raising=False)
     settings = ChaperoneSettings(_env_file=_find_env_files())
     assert settings.CHAPERONE_GPU_PARTITION == "accelerated"
+
+
+def test_rfd4_fields_are_declared():
+    """RFD4 keys must be fields, or extra="ignore" silently drops them.
+
+    The rfd4 and rfd4_search blocks read these through get_setting_field, which
+    is a getattr with a default: an undeclared field always resolves to the
+    default, so a value written to .env.local looks set but never arrives.
+    """
+    assert {"RFD4_SIF", "RFD4_WEIGHTS_DIR", "RFD4_REPO", "RFD4_ENV"} <= set(
+        ChaperoneSettings.model_fields
+    )
+
+
+def test_env_local_rfd4_values_survive(tmp_path, monkeypatch):
+    root = tmp_path / "checkout"
+    source = root / "src/chaperone"
+    source.mkdir(parents=True)
+    # A .env at the checkout root stops the upward search for one, exactly as the
+    # real repository layout does. Without it _find_env_files() would walk on to
+    # whatever directory above tmp_path happens to contain a .env (for example
+    # /tmp/.env on a developer machine) and .env.local would never be read.
+    (root / ".env").write_text("")
+    (root / ".env.local").write_text("RFD4_REPO=/tmp/x\nRFD4_SIF=/tmp/y.sif\n")
+    monkeypatch.setattr(module, "__file__", str(source / "settings.py"))
+    monkeypatch.chdir(root)
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.delenv("CHAPERONE_SITE", raising=False)
+    monkeypatch.delenv("CHAPERONE_ENV_FILE", raising=False)
+    for name in ("RFD4_REPO", "RFD4_SIF", "RFD4_WEIGHTS_DIR", "RFD4_ENV"):
+        monkeypatch.delenv(name, raising=False)
+
+    settings = ChaperoneSettings(_env_file=_find_env_files())
+
+    assert settings.RFD4_REPO == "/tmp/x"
+    assert settings.RFD4_SIF == "/tmp/y.sif"
+    assert settings.RFD4_WEIGHTS_DIR is None
+    assert settings.RFD4_ENV is None
