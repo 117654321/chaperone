@@ -32,6 +32,13 @@ eval_results/**
 **.submission_file_*
 configs/*
 !.pre-commit-config.yaml
+# Regeneration inputs for docs/params; without them a fresh clone cannot
+# reproduce the committed block documentation.
+!configs/block_purpose_zh.json
+!configs/block_params_zh.json
+# Local China-mirror build recipes hardcode this machine's paths (and a local
+# proxy port); tests/test_site_paths.py rejects them, so keep them out of git.
+containers/apptainer/*.cn.def
 test_logs/** */
 **.dat
 **/configs/scripts/*

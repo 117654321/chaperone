@@ -1,6 +1,6 @@
 # Chaperone block 总览
 
-86 个 block 的中文说明。每个文件里还有完整参数表、调用方式和例子。
+87 个 block 的中文说明。每个文件里还有完整参数表、调用方式和例子。
 
 重新生成：`python scripts/export_param_docs.py`
 
@@ -14,6 +14,12 @@
 | [`rfd3na`](rfd3na.md) | RFdiffusion3NA：全原子蛋白/DNA/RNA 设计 |
 | [`rfd3_partial`](rfd3_partial.md) | RFdiffusion3 部分扩散：从已有结构出发，加噪声再生成，做多样化或细化 |
 | [`rfd4`](rfd4.md) | RFD4-Proteina：flow matching 生物分子设计，条件化能力最强（热点、埋藏、氢键、二级结构） |
+
+## 搜索与优化
+
+| block | 干什么 |
+|---|---|
+| [`rfd4_search`](rfd4_search.md) | RFD4-Proteina 奖励引导束搜索：生成过程中就分叉、用 AF3 oracle 给每个分支打界面分，只保留胜者继续采样 |
 
 ## 端到端设计
 

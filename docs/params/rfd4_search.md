@@ -1,5 +1,13 @@
 # rfd4_search
 
+## 干什么用的
+
+RFD4-Proteina 奖励引导束搜索：生成过程中就分叉、用 AF3 oracle 给每个分支打界面分，只保留胜者继续采样。
+
+## 什么时候用它
+
+普通 rfd4 生成后接口质量仍不达标，需要采样阶段就被 AF3 牵着走时。约每个设计 6-12 次 AF3 refold，比普通生成贵得多；必须配 host checkout（RFD4_REPO）和本地权重（RFD4_WEIGHTS_DIR）。
+
 ## 基本信息
 
 - **一句话**：RFD4 reward-guided beam search with an AF3 refolding oracle

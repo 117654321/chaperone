@@ -23,8 +23,6 @@ import argparse
 import json
 import re
 import sys
-import typing
-import types
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
@@ -500,6 +498,7 @@ _SPECIAL_DOCS: dict[str, list[str]] = {
 # 总览分组
 _GROUPS = [
     ("骨架生成", ["rfd1", "rfd2", "rfd3", "rfd3na", "rfd3_partial", "rfd4"]),
+    ("搜索与优化", ["rfd4_search"]),
     ("端到端设计", ["bindcraft", "bindcraft2", "protein_hunter", "boltzgen",
                     "disco", "proteina_complexa", "rfoptimization"]),
     ("序列设计", ["mpnn", "foundry_mpnn", "esm2", "e1"]),

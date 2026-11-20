@@ -1,0 +1,350 @@
+{
+ "af3": {
+  "what": "AlphaFold3 结构预测。吃序列或结构，输出预测的三维结构和置信度指标（pLDDT、pTM、ipTM、PAE）。",
+  "when": "验证设计的可折叠性，或者给复合物打分。最准但最慢（约 47 秒/样本），需要 411G 数据库。"
+ },
+ "af3_with_target_template": {
+  "what": "AlphaFold3，但把靶点链的结构固定成模板。",
+  "when": "binder 设计后回折。让靶点保持原构象，只预测 binder 怎么贴，比裸 AF3 更贴近真实结合场景。"
+ },
+ "annotate": {
+  "what": "给结构加注释：界面残基、氢键、配体邻域芳香残基。",
+  "when": "下游 block（MPNN 的 aromatic_fix / hbond_fix）需要这些注释时。默认不计算，省时间。"
+ },
+ "aromatic_neighbors": {
+  "what": "数配体原子周围有多少芳香残基。",
+  "when": "评估小分子结合口袋的芳香堆积情况。"
+ },
+ "bindcraft": {
+  "what": "AF2 引导的从头 binder 设计。幻觉生成 binder + ProteinMPNN 重设计 + AF2 验证，全自动串起来。",
+  "when": "想一条命令出 binder，不想自己搭流水线。单条轨迹约 3 分钟，整轮可能几小时。"
+ },
+ "bindcraft2": {
+  "what": "BindCraft 第二代：JAX 优化 + ProteinMPNN 重设计 + AF2 验证。",
+  "when": "同 bindcraft，新版算法。"
+ },
+ "boltz2": {
+  "what": "Boltz-2 结构预测，支持蛋白、配体、复合物，还能做亲和力预测。",
+  "when": "要快速验证结构（约 13 秒/样本，比 AF3 快 3 倍），或需要结合亲和力。"
+ },
+ "boltz2_steered": {
+  "what": "Boltz-2 加螺旋引导（跑在 protein_hunter 容器里）。",
+  "when": "想让预测/设计偏向螺旋结构，抑制 α 螺旋塌缩。注意：实际用 protein_hunter 镜像，不是 boltz2。"
+ },
+ "boltzgen": {
+  "what": "BoltzGen 蛋白设计：扩散生成骨架 + 逆向折叠 + 结构验证。",
+  "when": "要一条龙设计流程，且想用 Boltz 生态。"
+ },
+ "chai1": {
+  "what": "Chai-1 结构预测。",
+  "when": "AF3 的另一个替代。本机实测单样本偏保守（iPTM 偏低），多采样或开 MSA 后再判断。"
+ },
+ "chirality_check": {
+  "what": "逐原子对比 CIP 手性码，检查预测的配体手性对不对。",
+  "when": "担心模型把配体手性搞错时。"
+ },
+ "clash": {
+  "what": "数骨架重原子之间的非成键碰撞。",
+  "when": "快速筛查设计质量，碰撞多的直接淘汰。"
+ },
+ "colabfold": {
+  "what": "ColabFold（AlphaFold2 封装），支持 MSA 服务器和本地 MSA。",
+  "when": "需要 AF2 结果但不想自己搭 AF2 环境。可离线，用本地 MSA 库。"
+ },
+ "contact_ms": {
+  "what": "计算 binder 和靶点之间的接触分子表面积（CMS）。",
+  "when": "量化界面接触面积，判断结合是否紧密。可限定只算某个表位。"
+ },
+ "copy": {
+  "what": "复制设计行，用于测试血缘追踪。",
+  "when": "调试流水线，验证下游能正确处理重复输入。"
+ },
+ "disco": {
+  "what": "蛋白序列-结构联合设计，可条件化在配体上。",
+  "when": "设计结合小分子的蛋白（比如血红素结合蛋白）。"
+ },
+ "dssr_motif_base_pairing": {
+  "what": "用 DSSR 检查 motif 碱基配对，看原生分类是否保留。",
+  "when": "RNA/DNA 设计的 motif 完整性验证。"
+ },
+ "dssr_snap_metrics": {
+  "what": "用 x3dna-dssr 和 x3dna-snap 算蛋白-DNA 复合物的生物物理指标。",
+  "when": "核酸复合物的深度几何分析。"
+ },
+ "e1": {
+  "what": "E1 掩码语言模型，做序列预测。",
+  "when": "从部分序列推全长，或做序列补全。"
+ },
+ "esm2": {
+  "what": "ESM-2 蛋白语言模型，输出序列嵌入向量。",
+  "when": "下游要用嵌入做聚类、分类，或者计算序列相似度。"
+ },
+ "esmfold2": {
+  "what": "ESMFold2 结构预测，可选 MSA 条件化。",
+  "when": "不需要 MSA 也能快速出结构（单序列模式），比 AF2/AF3 快很多。"
+ },
+ "filter": {
+  "what": "按指标阈值或分位数筛行。",
+  "when": "流水线里最常用的收尾步骤。支持 min/max 阈值、分位数、每个上游设计各取最优。"
+ },
+ "foldseek": {
+  "what": "用 Foldseek 按结构相似度聚类。",
+  "when": "设计出一堆骨架，想去重或选出结构多样的子集。"
+ },
+ "foundry_mpnn": {
+  "what": "Foundry 版 MPNN 逆向折叠（ProteinMPNN / LigandMPNN / SolubleMPNN）。",
+  "when": "同 mpnn，但走 Foundry 生态。与 mpnn（LigandMPNN 镜像）的数值等价性未验证。"
+ },
+ "hbond_metrics": {
+  "what": "算配体相互作用的氢键指标。",
+  "when": "评估结合模式是否有足够氢键。**本机不可用**——缺 hbplus 可执行文件。"
+ },
+ "ingest": {
+  "what": "从各种来源导入数据（DataFrame、CSV、Parquet、结构路径列表）。",
+  "when": "流水线入口，把外部数据变成管道能吃的表。"
+ },
+ "ipsae": {
+  "what": "ipSAE 界面打分——用对齐误差评估界面置信度。",
+  "when": "复合物排序首选。比单看 ipTM 更能反映真实界面质量。"
+ },
+ "ligand_clash": {
+  "what": "量蛋白和配体之间最近的重原子接触距离。",
+  "when": "检查配体有没有戳进蛋白里。"
+ },
+ "ligand_ddg": {
+  "what": "Rosetta DDG 计算蛋白-配体结合能。",
+  "when": "需要物理层面的结合能，不只看预测器置信度。需要 DAlphaBall。"
+ },
+ "ligand_ddg_soft": {
+  "what": "软排斥版 ddG：硬打包、软打分、截尾均值。",
+  "when": "配体-蛋白界面比较紧张时，硬排斥算不出结果可以用这个。"
+ },
+ "ligand_pocket": {
+  "what": "配体接触、包埋、外壳的分布式指标。",
+  "when": "评估口袋的包埋程度和形状匹配。"
+ },
+ "manifest_val_structures": {
+  "what": "为验证集准备 PDB 参考组装体。",
+  "when": "跑结构预测验证流程时准备参考结构。"
+ },
+ "materialize": {
+  "what": "把存储的结构（catcif 归档）写到磁盘。",
+  "when": "用了 store=catcif 之后，需要把文件还原出来。"
+ },
+ "metal3d": {
+  "what": "用 3D-CNN 预测过渡金属结合位点。",
+  "when": "找蛋白里的金属结合位点，或验证设计是否引入了金属位点。"
+ },
+ "motif_confidence": {
+  "what": "按 diffused_index_map 拆出 motif 和骨架各自的 pLDDT / PAE。",
+  "when": "想单独看 motif 部分保住了没有，而不被整体分数掩盖。"
+ },
+ "motif_geometry": {
+  "what": "算 motif 原子之间的距离和角度。",
+  "when": "验证催化位点、结合位点的几何关系是否保持。"
+ },
+ "mpnn": {
+  "what": "LigandMPNN / ProteinMPNN 逆向折叠：给骨架设计序列。",
+  "when": "流水线里最常用的序列设计步骤。支持固定残基、氢键保持、芳香保持。"
+ },
+ "mpnn_score": {
+  "what": "解析 MPNN FASTA 里的置信度，变成可排序的指标。",
+  "when": "用它筛 MPNN 输出——每个骨架保留置信度最高的序列。"
+ },
+ "mutate_residues": {
+  "what": "按指定残基生成命名变体，血缘清晰。",
+  "when": "做定点突变扫描，或构造对照组。"
+ },
+ "nanoparticle_prepare": {
+  "what": "对齐抗原碰撞参考，并保住 C3 骨架的对称轴。",
+  "when": "纳米颗粒/铁蛋白载体设计的准备步骤。"
+ },
+ "openfold3": {
+  "what": "OpenFold3 结构预测（AF3 的开源实现）。",
+  "when": "想要 AF3 级别的结果但需要开源/可改的代码。"
+ },
+ "order_collection": {
+  "what": "提取序列、检查订购状态、汇总指标。",
+  "when": "设计完成、准备下单合成时的最后整理。"
+ },
+ "package_submission": {
+  "what": "校验并写出只含序列的提交包。",
+  "when": "把设计交给合成公司前的格式化输出。"
+ },
+ "peppr": {
+  "what": "用 peppr 算结构评估指标：fnat、irmsd、lrmsd、dockq、lDDT。",
+  "when": "有参考结构时，量化预测和参考的偏差。"
+ },
+ "plip": {
+  "what": "用 PLIP 分析蛋白-配体相互作用类型（氢键、疏水、π 堆积等）。",
+  "when": "要看结合模式的细节，不只是总分。"
+ },
+ "pocket_coulomb": {
+  "what": "算带电配体原子和带电口袋残基之间的静电互补性。",
+  "when": "评估静电匹配好不好，尤其是带电配体。"
+ },
+ "ppi_ddg": {
+  "what": "FastRelax + ddG 算蛋白-蛋白结合能。",
+  "when": "物理层面的 binder 排序。注意：和 AF3 的 ipTM 排序经常不一致。"
+ },
+ "protein_hunter": {
+  "what": "Boltz 结构幻觉做从头 binder 设计。",
+  "when": "bindcraft 之外的另一个端到端 binder 设计方案。"
+ },
+ "proteina_complexa": {
+  "what": "全原子蛋白 binder 序列/结构联合设计。",
+  "when": "需要全原子精度（含侧链）的复合物设计。"
+ },
+ "protenix": {
+  "what": "Protenix 结构预测。",
+  "when": "**AF3 的快速替代**——6.6 秒/样本，本机实测排序与 AF3 完全一致。适合先粗筛再上 AF3。"
+ },
+ "rasa": {
+  "what": "算配体原子的溶剂可及表面积。",
+  "when": "判断配体埋藏程度——埋得深通常结合更牢。"
+ },
+ "reference_motif_rmsd": {
+  "what": "按 diffused_index_map 算 motif 相对输入的 RMSD。",
+  "when": "验证设计的 motif 有没有跑位。"
+ },
+ "remap_ligand": {
+  "what": "把预测输出的配体原子/残基名改成和参考 CIF 一致。",
+  "when": "预测器重命名了配体（AF3 常见），下游要按名字匹配时。"
+ },
+ "restore_sidechains": {
+  "what": "从上游结构恢复指定 motif 的 rotamer。",
+  "when": "想保住 motif 的原始侧链构象，而不是重新打包。"
+ },
+ "rf3": {
+  "what": "RosettaFold3 结构预测。",
+  "when": "Foundry 生态的结构预测，速度和质量介于 Boltz 和 AF3 之间。"
+ },
+ "rfd1": {
+  "what": "RFdiffusion v1：骨架层面蛋白设计。支持无条件生成、motif 支撑、binder 设计、对称设计。",
+  "when": "老版但稳定。contigs 参数控制长度、对称用 symmetry 字段。"
+ },
+ "rfd2": {
+  "what": "RFdiffusion2：原子级蛋白设计，支持配体、小分子。",
+  "when": "需要配体上下文的设计。输入必须带 ORI 残基。"
+ },
+ "rfd3": {
+  "what": "RFdiffusion3：通用扩散设计。支持单体、binder、酶、motif 支撑、对称、环化。",
+  "when": "主力骨架生成工具。**长度、环化、对称、热点都在 inputs 的 JSON 里**，不在 block 参数上。"
+ },
+ "rfd3_partial": {
+  "what": "RFdiffusion3 部分扩散：从已有结构出发，加噪声再生成，做多样化或细化。",
+  "when": "已有不错的骨架，想微调或生成变体。partial_t 控制偏离程度。"
+ },
+ "rfd3na": {
+  "what": "RFdiffusion3NA：全原子蛋白/DNA/RNA 设计。",
+  "when": "核酸相关的设计——蛋白-RNA、蛋白-DNA 复合物。"
+ },
+ "rfd4": {
+  "what": "RFD4-Proteina：flow matching 生物分子设计，条件化能力最强（热点、埋藏、氢键、二级结构）。",
+  "when": "需要精细条件控制的 binder 设计。**长度、热点、埋藏都在 inputs 的 YAML spec 里**。"
+ },
+ "rfd4_search": {
+  "what": "RFD4-Proteina 奖励引导束搜索：生成过程中就分叉、用 AF3 oracle 给每个分支打界面分，只保留胜者继续采样。",
+  "when": "普通 rfd4 生成后接口质量仍不达标，需要采样阶段就被 AF3 牵着走时。约每个设计 6-12 次 AF3 refold，比普通生成贵得多；必须配 host checkout（RFD4_REPO）和本地权重（RFD4_WEIGHTS_DIR）。"
+ },
+ "rfoptimization": {
+  "what": "RF3 梯度 / Boltz-2 循环 + 外部 MPNN 序列重设计。",
+  "when": "迭代优化已有设计：多轮预测-重设计，每轮用梯度或预测器打分选优。"
+ },
+ "rmsd": {
+  "what": "算两个结构之间的对齐 RMSD（骨架、全原子、motif）。",
+  "when": "验证设计有没有被预测复现——骨架 RMSD 大说明预测跑偏了。"
+ },
+ "rna_connectivity": {
+  "what": "检查核酸链的 O3'(i)→P(i+1) 骨架断裂。",
+  "when": "RNA/DNA 设计的拓扑完整性检查。"
+ },
+ "rna_ss_f1_mcc": {
+  "what": "用 RNet2 预测的二级结构和参考规范配对算 F1 / MCC。",
+  "when": "RNA 设计里 motif 二级结构保真度的量化。"
+ },
+ "rna_thermo": {
+  "what": "用 ViennaRNA 算 Boltzmann 概率、配对概率、集合缺陷。",
+  "when": "评估 RNA motif 的热力学稳定性——配对是不是真的稳定。"
+ },
+ "rotamer_metrics": {
+  "what": "算蛋白侧链的 rotamer 质量（要 Dunbrack 库）。",
+  "when": "评估侧链打包质量，看有没有不合理的构象。"
+ },
+ "rotamer_relax": {
+  "what": "用 PyRosetta 做 rotamer 松弛。",
+  "when": "把侧链调整到能量更低的构象。"
+ },
+ "rotamer_sweep": {
+  "what": "穷举指定侧链的 chi 角度组合。",
+  "when": "系统性扫描某个残基的构象空间。"
+ },
+ "rpxdock": {
+  "what": "把 C3 不对称单元对接到 I3 笼子里，输出 C3 三聚体。",
+  "when": "纳米颗粒/笼状载体的对接设计。"
+ },
+ "score_val_structures": {
+  "what": "用验证参考给预测结构打分。",
+  "when": "结构预测验证流程的打分环节。"
+ },
+ "secondary_structure": {
+  "what": "算二级结构组成，以及配体周围口袋的 loop / pLDDT 无序度。",
+  "when": "评估设计的二级结构合理性，或看结合口袋的柔性。"
+ },
+ "select_chains": {
+  "what": "保留指定链，残基编号和血缘不变。",
+  "when": "复合物里只想要某条链继续往下走。"
+ },
+ "select_diverse": {
+  "what": "按序列/结构阈值选多样性子集。",
+  "when": "设计出一堆相似的结果，想挑出真正不同的几个。"
+ },
+ "select_motif": {
+  "what": "用自定义函数挑 motif 残基，供下游固定。",
+  "when": "需要复杂规则确定哪些残基算 motif 时。"
+ },
+ "selective_sidechain_repack": {
+  "what": "只重打包明确选中的蛋白侧链。",
+  "when": "想改进部分侧链但保持其他不变。"
+ },
+ "sequence_identity_gate": {
+  "what": "骨架区域对天然参考的全局 NW 一致性，作为新颖性硬门槛。",
+  "when": "确保设计不是照抄天然序列。RNA motif 支撑 benchmark 用 0.40 阈值。"
+ },
+ "simplefold": {
+  "what": "Apple SimpleFold：只吃序列的蛋白单体折叠预测。",
+  "when": "最轻量的结构预测，不需要 MSA。"
+ },
+ "symmetry": {
+  "what": "算同源寡聚体组装相对循环点群的偏差。",
+  "when": "验证对称设计（C3 等）的对称性是否真的成立。"
+ },
+ "tm_score": {
+  "what": "对参考结构算 TM-score。",
+  "when": "比 RMSD 更稳健的整体结构相似度。需要给 reference 参数。"
+ },
+ "tm_score_rna": {
+  "what": "TM-score_RNA（Gong 2019），用 US-align 算，按参考长度归一化。",
+  "when": "RNA 结构相似度。参考长度 < 20 时改用 RMSD。"
+ },
+ "tmol_interface": {
+  "what": "tmol 算蛋白-配体界面 ddG 和逐项能量分解。",
+  "when": "GPU 版 Rosetta 能量，比 CPU 版快。需要配体原子名和 SMILES 对齐。"
+ },
+ "tmol_minimize": {
+  "what": "tmol 笛卡尔全原子能量最小化（beta_nov2016_cart）。",
+  "when": "把结构能量降下来，消除明显冲突。"
+ },
+ "to_cif": {
+  "what": "把结构重新保存成 CIF。",
+  "when": "下游工具只吃 CIF（RFD4 就是这样），需要格式转换。"
+ },
+ "to_pdb": {
+  "what": "把结构重新保存成 PDB。",
+  "when": "下游工具只吃 PDB，或要交给只能读 PDB 的软件。"
+ },
+ "transform": {
+  "what": "对每行应用 atomworks Transform。",
+  "when": "需要自定义结构变换，且已有现成的 Transform 对象时。"
+ }
+}
