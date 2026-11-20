@@ -1,9 +1,8 @@
 name: Clean install
 on:
-  # Automatic CI is paused. Uncomment these triggers to restore it.
-  # pull_request:
-  # push:
-  #   branches: [main]
+  pull_request:
+  push:
+    branches: [main]
   workflow_dispatch:
   workflow_call:
 permissions:
