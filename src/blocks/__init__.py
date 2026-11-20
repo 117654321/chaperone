@@ -190,7 +190,9 @@ def get_all_containers() -> dict[str, "Image"]:
             # block.
             image = _get() if _get else getattr(block_cls, "_image", None)
         except Exception as e:
-            warnings.warn(f"Failed to resolve image for '{name}': {e}")
+            warnings.warn(
+                f"Failed to resolve image for '{name}': {type(e).__name__}: {e}"
+            )
             continue
         if image is not None and image.name not in containers:
             containers[image.name] = image

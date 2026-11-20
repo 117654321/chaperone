@@ -25,7 +25,9 @@ def test_motif_without_custom_builder_is_rejected():
     """The bundled builder ignores 'motif'; accepting it ships a linear ring."""
     import blocks.networks.design.rfd4 as module
 
-    with pytest.raises(Exception, match="cyclic_builder"):
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError, match="cyclic_builder"):
         module.RFD4Block(
             cyclic=True,
             cyclic_motif_template="/tmp/motif.cif",

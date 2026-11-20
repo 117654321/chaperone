@@ -27,7 +27,7 @@ from pydantic import Field, model_validator
 
 from chaperone import CompiledBlockFunction, JobArgs, PipelineDataHandler, get_setting_field
 from chaperone.block_config import TIER_PRIMARY, ScriptSpec
-from chaperone.common import glob_designs_in_dir, tail_block_log
+from chaperone.common import tail_block_log
 from chaperone.containers import Image
 from chaperone.data import make_row
 
@@ -230,12 +230,11 @@ class RFD4Block(CompiledBlockFunction):
     cyclic_motif_template: Optional[str] = Field(
         default=None,
         description=(
-            "CIF holding a motif's measured coordinates, in the SAME frame as the "
-            "input structure. The ring's first residues are pinned to those "
-            "coordinates and identities (C_CRD + C_SEQ) instead of being designed. "
-            "Requires cyclic_builder: the bundled builder leaves the whole ring "
-            "to the model and ignores this field, so setting it alone is an "
-            "error rather than a silent no-op."
+            "Requires cyclic_builder: only a custom builder pins the ring. The "
+            "CIF holds the motif's measured coordinates, in the SAME frame as the "
+            "input structure; the ring's first residues are then conditioned on "
+            "them (C_CRD + C_SEQ) instead of designed. Setting this without "
+            "cyclic_builder is an error, not a silent no-op."
         ),
     )
     cyclic_motif_chain: str = Field(

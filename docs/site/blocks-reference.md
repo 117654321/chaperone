@@ -1000,7 +1000,7 @@ Class: `RFD4Block` · Input: `False` · Resources: partition=`gpu`, gpu_class=`l
 | `target_chains` | `Optional[list[str]]` | `None` | Target chains to keep and condition on. None keeps every chain in the input. |
 | `hotspots` | `list[int \| str] \| dict \| None` | `None` | Target atoms the peptide should contact (C_HOT). C_HOT is an atom-level condition, so naming the side-chain atoms is ... |
 | `cyclic_chemistry` | `str` | `'head_tail'` | Ring chemistry: 'head_tail' (N1-C12 amide, closes reliably), 'disulfide' (Cys SG-SG), or 'isopeptide' (Lys NZ-C). Hea... |
-| `cyclic_motif_template` | `Optional[str]` | `None` | CIF holding a motif's measured coordinates, in the SAME frame as the input structure. The ring's first residues are p... |
+| `cyclic_motif_template` | `Optional[str]` | `None` | Requires cyclic_builder: only a custom builder pins the ring. The CIF holds the motif's measured coordinates, in the ... |
 | `cyclic_motif_chain` | `str` | `'E'` | Chain id of the motif inside cyclic_motif_template. |
 | `cyclic_motif_res_ids` | `Optional[list[int]]` | `None` | Residue ids of the motif in the template, in ring order. |
 | `cyclic_builder` | `Optional[str]` | `None` | Path to an alternative cyclic-input builder supporting 'motif'. Defaults to the bundled build_cyclic_rfd4_input.py. |
