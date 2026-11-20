@@ -196,6 +196,20 @@ class RFD4SearchBlock(BlockFunction):
             )
         return path.resolve()
 
+    def _staged_config_path(self, repo: Path) -> Optional[Path]:
+        """The file this run will copy into the checkout, if any.
+
+        Mirrors the copy condition in ``_search_config_name``: a config that
+        already lives inside the checkout is used in place, so the cleanup in
+        ``__call__`` must not delete it -- that would remove the user's own
+        file after a successful run.
+        """
+        if not self.search_config:
+            return None
+        source = Path(self.search_config).expanduser()
+        target = repo / "configs" / "inference_experiment" / source.name
+        return None if source.resolve() == target.resolve() else target
+
     def _search_config_name(self, repo: Path) -> str:
         """Name of an ``inference_experiment`` config visible to Hydra.
 
@@ -244,13 +258,7 @@ class RFD4SearchBlock(BlockFunction):
         weights = self._resolve_weights()
 
         config_name = self._search_config_name(repo)
-        # Copied configs must not outlive the run: a stale copy would shadow the
-        # next run's file and silently disappear from the checkout's git status.
-        staged_config = (
-            repo / "configs" / "inference_experiment" / Path(self.search_config).name
-            if self.search_config
-            else None
-        )
+        staged_config = self._staged_config_path(repo)
 
         command = [
             str(python), "-m", "rfproteina.generate",
@@ -304,7 +312,6 @@ class RFD4SearchBlock(BlockFunction):
     def compile(self, sandbox_dir):
         """One row per surviving design, carrying reward and oracle metrics."""
         import csv
-        import json
 
         root = Path(sandbox_dir)
         out_dir = root / self.output_subdir

@@ -102,3 +102,28 @@ def test_one_broken_image_does_not_abort_container_discovery(monkeypatch):
 
     assert "fine" in containers
     assert "broken" not in containers
+
+
+def test_config_inside_the_checkout_is_never_staged_or_deleted(tmp_path):
+    """_staged_config_path must mirror the copy: in-place configs stay put.
+
+    The cleanup runs in a finally block, so a wrong answer here deletes the
+    user's own search config after a successful run.
+    """
+    import blocks.networks.design.rfd4_search as module
+
+    repo = tmp_path / "repo"
+    configs = repo / "configs" / "inference_experiment"
+    configs.mkdir(parents=True)
+    inside = configs / "mine.yaml"
+    inside.write_text("search: {}\n")
+
+    block = module.RFD4SearchBlock(search_config=str(inside))
+    assert block._staged_config_path(repo) is None
+
+    outside = tmp_path / "elsewhere.yaml"
+    outside.write_text("search: {}\n")
+    copied = module.RFD4SearchBlock(search_config=str(outside))
+    assert copied._staged_config_path(repo) == configs / "elsewhere.yaml"
+
+    assert module.RFD4SearchBlock()._staged_config_path(repo) is None
