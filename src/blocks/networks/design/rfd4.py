@@ -23,7 +23,7 @@ import shutil
 from pathlib import Path
 from typing import Optional, Union
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from chaperone import CompiledBlockFunction, JobArgs, PipelineDataHandler, get_setting_field
 from chaperone.block_config import TIER_PRIMARY, ScriptSpec
@@ -231,10 +231,11 @@ class RFD4Block(CompiledBlockFunction):
         default=None,
         description=(
             "CIF holding a motif's measured coordinates, in the SAME frame as the "
-            "input structure. When given, the first residues of the ring are "
-            "pinned to those coordinates and identities (C_CRD + C_SEQ) instead "
-            "of being designed. Needed when the ring must reproduce a specific "
-            "contact geometry rather than merely sit near hotspots."
+            "input structure. The ring's first residues are pinned to those "
+            "coordinates and identities (C_CRD + C_SEQ) instead of being designed. "
+            "Requires cyclic_builder: the bundled builder leaves the whole ring "
+            "to the model and ignores this field, so setting it alone is an "
+            "error rather than a silent no-op."
         ),
     )
     cyclic_motif_chain: str = Field(
@@ -251,6 +252,27 @@ class RFD4Block(CompiledBlockFunction):
             "Defaults to the bundled build_cyclic_rfd4_input.py."
         ),
     )
+
+    @model_validator(mode="after")
+    def _motif_needs_a_builder_that_reads_it(self):
+        """Reject motif pinning the bundled builder cannot honour.
+
+        ``_prepare_cyclic_inputs`` writes the motif block into the builder
+        request, but ``build_cyclic_rfd4_input.py`` never reads it: its
+        placeholder peptide is fully designed (``C_SEQ = <M>``, ``C_CRD`` NaN
+        everywhere). Accepting the setting would produce an unpinned ring while
+        the docs promised pinned coordinates — a silent scientific error, not a
+        cosmetic one. Fail here instead, before any GPU time is spent.
+        """
+        if self.cyclic_motif_template and not self.cyclic_builder:
+            raise ValueError(
+                "cyclic_motif_template is set but cyclic_builder is not: the "
+                "bundled builder does not read 'motif', so the ring would be "
+                "designed instead of pinned. Pass cyclic_builder=<a builder "
+                "that applies C_CRD + C_SEQ to the motif residues>, or drop "
+                "cyclic_motif_template and condition on hotspots only."
+            )
+        return self
 
     # ── command construction ────────────────────────────────────────────
 
@@ -602,7 +624,11 @@ class RFD4Block(CompiledBlockFunction):
         for sub in ("inductor", "triton", "torch", "xdg"):
             (cache_root / sub).mkdir(parents=True, exist_ok=True)
 
-        container_cmd = self._script_spec.image.build_command(
+        # Resolve the real SIF here, not the placeholder in _script_spec: the
+        # container run path would otherwise look the image up in
+        # CHAPERONE_CONTAINER_DIRS and ignore RFD4_SIF entirely, failing with
+        # "Run 'chaperone install rfd4'" even though the file exists.
+        container_cmd = self._get_image().build_command(
             "bash",
             str(script),
             binds=binds,

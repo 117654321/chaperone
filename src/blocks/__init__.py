@@ -183,7 +183,15 @@ def get_all_containers() -> dict[str, "Image"]:
             warnings.warn(f"Failed to import block '{name}': {e}")
             continue
         _get = getattr(block_cls, "_get_image", None)
-        image = _get() if _get else getattr(block_cls, "_image", None)
+        try:
+            # Resolve inside the guard: a block whose image lives at a site
+            # path (rfd4's SIF) raises FileNotFoundError when the file is not
+            # on this host, and that must not abort discovery for every other
+            # block.
+            image = _get() if _get else getattr(block_cls, "_image", None)
+        except Exception as e:
+            warnings.warn(f"Failed to resolve image for '{name}': {e}")
+            continue
         if image is not None and image.name not in containers:
             containers[image.name] = image
     for name, (module, attribute) in _CONTAINER_VARIANTS.items():

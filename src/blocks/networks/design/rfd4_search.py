@@ -244,6 +244,13 @@ class RFD4SearchBlock(BlockFunction):
         weights = self._resolve_weights()
 
         config_name = self._search_config_name(repo)
+        # Copied configs must not outlive the run: a stale copy would shadow the
+        # next run's file and silently disappear from the checkout's git status.
+        staged_config = (
+            repo / "configs" / "inference_experiment" / Path(self.search_config).name
+            if self.search_config
+            else None
+        )
 
         command = [
             str(python), "-m", "rfproteina.generate",
@@ -275,17 +282,22 @@ class RFD4SearchBlock(BlockFunction):
 
         log_path = root / "rfd4_search.log"
         logger.info("running: %s", " ".join(command))
-        with log_path.open("w") as log:
-            completed = subprocess.run(
-                command, cwd=repo, env=env, stdout=log, stderr=subprocess.STDOUT
-            )
-        if completed.returncode != 0:
-            raise RuntimeError(
-                f"rfd4-search exited {completed.returncode}. "
-                f"Log tail:\n{tail_block_log(str(root))}"
-            )
+        try:
+            with log_path.open("w") as log:
+                completed = subprocess.run(
+                    command, cwd=repo, env=env, stdout=log, stderr=subprocess.STDOUT
+                )
+            if completed.returncode != 0:
+                raise RuntimeError(
+                    f"rfd4-search exited {completed.returncode}. "
+                    f"Log tail:\n{tail_block_log(str(root))}"
+                )
 
-        return self.compile(str(root))
+            return self.compile(str(root))
+        finally:
+            if staged_config is not None and staged_config.is_file():
+                staged_config.unlink()
+                logger.info("removed staged search config %s", staged_config)
 
     # ── output compilation ────────────────────────────────────────────────
 
